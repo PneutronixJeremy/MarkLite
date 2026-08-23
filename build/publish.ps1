@@ -37,4 +37,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "dotnet publish failed with exit code $LASTEXITCODE"
 }
 
+# The app forces Win32RenderingMode.Software, so the ANGLE GL translator
+# never loads — no reason to ship it.
+Remove-Item "$repoRoot\publish\av_libglesv2.dll" -ErrorAction SilentlyContinue
+
 Write-Host "Published to $repoRoot\publish"

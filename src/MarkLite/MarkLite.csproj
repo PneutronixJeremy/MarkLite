@@ -16,6 +16,10 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 
+    <!-- Viewer app: favor small working set over GC throughput. -->
+    <GCConserveMemory>9</GCConserveMemory>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+
     <!-- NU1903: Tmds.DBus.Protocol advisory — transitive, Linux-only DBus client, never runs on Windows. -->
     <NoWarn>$(NoWarn);NU1903</NoWarn>
   </PropertyGroup>

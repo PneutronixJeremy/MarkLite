@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private string? _currentFile;
     private string? _currentText;
     private IStorageFolder? _lastOpenFolder;
+    private bool _firstRenderLogged;
 
     public MainWindow() : this([])
     {
@@ -152,7 +153,21 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() =>
         {
             TaskListMarkerHider.Apply(_viewer);
+            if (!_firstRenderLogged)
+            {
+                _firstRenderLogged = true;
+                DebugLog.Write($"startup: first content render {Program.StartupTimer.ElapsedMilliseconds} ms after process start");
+            }
             afterLayout?.Invoke();
+
+            /*  Parsing + control-tree construction produce a large one-shot
+                garbage spike; the app idles right after a render, so collect
+                now and hand the pages back to the OS instead of holding a
+                bloated working set. */
+            Dispatcher.UIThread.Post(static () =>
+            {
+                GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            }, DispatcherPriority.Background);
         }, DispatcherPriority.Loaded);
     }
 

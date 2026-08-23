@@ -23,6 +23,14 @@ internal static class Program
     {
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            .With(new Win32PlatformOptions
+            {
+                /*  Software rendering: a text-document viewer gains nothing
+                    from ANGLE/GL, and skipping the GL contexts saves tens of
+                    MB of working set. Skia's CPU raster handles scrolling
+                    text easily. */
+                RenderingMode = [Win32RenderingMode.Software],
+            })
             .LogToTrace();
     }
 }

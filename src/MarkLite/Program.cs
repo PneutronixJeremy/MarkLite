@@ -16,6 +16,22 @@ internal static class Program
     public static void Main(string[] args)
     {
         StartupTimer.Start();
+
+        /*  Single-instance: with a file argument, hand it to a running primary
+            instance and exit instead of opening a second window. A primary
+            that cannot be reached (or a no-argument launch when one exists)
+            falls through and runs standalone. */
+        if (!SingleInstance.TryBecomePrimary() && args.Length > 0)
+        {
+            var fullPath = System.IO.Path.GetFullPath(args[0]);
+            if (SingleInstance.SendToPrimary(fullPath))
+            {
+                DebugLog.Write($"handed off to primary instance: {fullPath}; exiting");
+                return;
+            }
+            DebugLog.Write("primary instance unreachable; running standalone");
+        }
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

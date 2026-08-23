@@ -24,12 +24,39 @@
             <Setter Property="Foreground" Value="{DynamicResource MdAccent}" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
+        <Style Selector="Border.TabItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="4,4,0,0" />
+            <Setter Property="Padding" Value="8,3,2,3" />
+        </Style>
+        <Style Selector="Border.TabItemActive">
+            <Setter Property="Background" Value="{DynamicResource MdInlineCodeBackground}" />
+        </Style>
+        <Style Selector="Border.TabItem Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="2,1" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
+        </Style>
+        <Style Selector="Border.TabItemActive Button.TabName">
+            <Setter Property="Foreground" Value="{DynamicResource MdBodyForeground}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.TabItemStale Button.TabName">
+            <Setter Property="Foreground" Value="{DynamicResource MdStaleBannerForeground}" />
+        </Style>
+        <Style Selector="Border.TabItem Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource MdTableRowAltBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource MdBodyForeground}" />
+        </Style>
     </Window.Styles>
 
     <DockPanel Background="{DynamicResource MdPageBackground}">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
                 <MenuItem Header="_Open…" Click="OnOpenClicked" />
+                <MenuItem Header="_Close tab" Click="OnCloseTabClicked" InputGesture="Ctrl+W" />
                 <Separator />
                 <MenuItem Header="E_xit" Click="OnExitClicked" />
             </MenuItem>
@@ -40,6 +67,16 @@
                 <MenuItem Header="_Contents sidebar" Click="OnToggleTocClicked" InputGesture="Ctrl+T" />
             </MenuItem>
         </Menu>
+        <Border Name="TabStripBorder"
+                DockPanel.Dock="Top"
+                IsVisible="False"
+                Background="{DynamicResource MdTableHeaderBackground}"
+                BorderBrush="{DynamicResource MdTableBorder}"
+                BorderThickness="0,0,0,1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Name="TabStrip" Orientation="Horizontal" Spacing="2" Margin="4,3,4,0" />
+            </ScrollViewer>
+        </Border>
         <Border Name="FindBar"
                 DockPanel.Dock="Top"
                 IsVisible="False"

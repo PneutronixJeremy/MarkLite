@@ -27,6 +27,8 @@
                     <SolidColorBrush x:Key="MdLinkHoverForeground">#1A7FEB</SolidColorBrush>
                     <SolidColorBrush x:Key="MdAccent">#2E7CD6</SolidColorBrush>
                     <SolidColorBrush x:Key="MdTaskUncheckedBorder">#6E7781</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdStaleBannerBackground">#FFF3C4</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdStaleBannerForeground">#6B5310</SolidColorBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="MdPageBackground">#1E1E1E</SolidColorBrush>
@@ -45,6 +47,8 @@
                     <SolidColorBrush x:Key="MdLinkHoverForeground">#82BFFF</SolidColorBrush>
                     <SolidColorBrush x:Key="MdAccent">#3794FF</SolidColorBrush>
                     <SolidColorBrush x:Key="MdTaskUncheckedBorder">#8B9096</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdStaleBannerBackground">#4A3D14</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdStaleBannerForeground">#E8D48B</SolidColorBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

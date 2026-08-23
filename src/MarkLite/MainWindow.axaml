@@ -2,7 +2,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="MarkLite.MainWindow"
         Title="MarkLite"
-        Width="1000" Height="750">
+        Width="1000" Height="750"
+        DragDrop.AllowDrop="True">
     <DockPanel Background="{DynamicResource MdPageBackground}">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
@@ -11,6 +12,15 @@
                 <MenuItem Header="E_xit" Click="OnExitClicked" />
             </MenuItem>
         </Menu>
+        <Border Name="StaleBanner"
+                DockPanel.Dock="Top"
+                IsVisible="False"
+                Background="{DynamicResource MdStaleBannerBackground}"
+                Padding="10,4">
+            <TextBlock Name="StaleText"
+                       Foreground="{DynamicResource MdStaleBannerForeground}"
+                       FontSize="12.5" />
+        </Border>
         <ContentControl Name="ViewerHost" />
     </DockPanel>
 </Window>

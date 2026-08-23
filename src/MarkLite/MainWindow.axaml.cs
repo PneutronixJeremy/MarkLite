@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly MarkdownScrollViewer _viewer;
     private readonly DocumentWatcher _watcher;
     private string? _currentFile;
+    private string? _currentText;
     private IStorageFolder? _lastOpenFolder;
 
     public MainWindow() : this([])
@@ -61,6 +62,18 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
 
+        /*  Style brushes follow the theme via DynamicResource, but syntax
+            highlighting bakes colored Runs at render time — a variant switch
+            needs one re-render of the current document. */
+        ActualThemeVariantChanged += (_, _) =>
+        {
+            if (_currentText is not null)
+            {
+                DebugLog.Write($"theme changed to {ActualThemeVariant}; re-rendering");
+                RenderMarkdown(_currentText);
+            }
+        };
+
         LoadFile(args.Length > 0 ? args[0] : DefaultDocument);
 
         Opened += (_, _) =>
@@ -75,10 +88,10 @@ public partial class MainWindow : Window
         {
             var fullPath = Path.GetFullPath(path);
             var text = File.ReadAllText(fullPath);
-            _viewer.Markdown = TaskListPreprocessor.Apply(text);
-            PostRenderPass();
+            RenderMarkdown(text);
 
             _currentFile = fullPath;
+            _currentText = text;
             _watcher.Watch(fullPath);
             SetStale(null);
             Title = $"MarkLite — {Path.GetFileName(fullPath)}";
@@ -88,6 +101,7 @@ public partial class MainWindow : Window
         {
             _viewer.Markdown = $"# Cannot open file\n\n`{path}`\n\n{ex.Message}";
             _currentFile = null;
+            _currentText = null;
             _watcher.StopWatching();
             SetStale(null);
             Title = "MarkLite";
@@ -115,8 +129,8 @@ public partial class MainWindow : Window
             var savedScroll = _viewer.ScrollValue;
             DebugLog.Write($"reload triggered: {_currentFile}; scroll saved {savedScroll.Y:F1}");
 
-            _viewer.Markdown = TaskListPreprocessor.Apply(text);
-            PostRenderPass(() => DebugLog.Write($"scroll restored {_viewer.ScrollValue.Y:F1}"));
+            _currentText = text;
+            RenderMarkdown(text, () => DebugLog.Write($"scroll restored {_viewer.ScrollValue.Y:F1}"));
             SetStale(null);
         }
         catch (IOException ex)
@@ -128,12 +142,13 @@ public partial class MainWindow : Window
         }
     }
 
-    /*  Runs after the layout pass that realizes freshly assigned Markdown
-        content: task-list bullets can only be hidden once the rendered
-        controls are in the visual tree, and scroll restoration happens in
-        that same pass. */
-    private void PostRenderPass(Action? afterLayout = null)
+    /*  Single render path: preprocess task lists, assign, then after the
+        layout pass that realizes the new controls, hide task-item bullets
+        (only possible once they are in the visual tree) and run any
+        follow-up (e.g. scroll logging). */
+    private void RenderMarkdown(string text, Action? afterLayout = null)
     {
+        _viewer.Markdown = TaskListPreprocessor.Apply(text);
         Dispatcher.UIThread.Post(() =>
         {
             TaskListMarkerHider.Apply(_viewer);

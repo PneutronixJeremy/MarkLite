@@ -4,6 +4,7 @@ using Avalonia.Controls.Documents;
 using Avalonia.Media;
 using Avalonia.Styling;
 using ColorCode;
+using ColorCode.Common;
 using ColorCode.Parsing;
 using ColorCode.Styling;
 
@@ -52,7 +53,13 @@ internal sealed class CodeHighlighter : CodeColorizerBase
     internal static IReadOnlyList<Run> Colorize(string code, ILanguage language)
     {
         var dark = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
-        var highlighter = new CodeHighlighter(dark ? StyleDictionary.DefaultDark : StyleDictionary.DefaultLight);
+        var styles = dark ? StyleDictionary.DefaultDark : StyleDictionary.DefaultLight;
+        if (!dark && styles.Contains(ScopeName.PowerShellCommand))
+        {
+            // ColorCode's light dictionary keeps the dark theme's yellow here — unreadable on a light panel.
+            styles[ScopeName.PowerShellCommand].Foreground = "#795E26";
+        }
+        var highlighter = new CodeHighlighter(styles);
         highlighter.languageParser.Parse(code, language,
             (parsed, scopes) => highlighter.Write(parsed, scopes));
         return highlighter._runs;

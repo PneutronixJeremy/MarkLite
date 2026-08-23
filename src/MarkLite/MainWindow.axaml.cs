@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Avalonia;
@@ -7,6 +8,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using ColorTextBlock.Avalonia;
 using Markdown.Avalonia;
 using MarkLite.Rendering;
 
@@ -25,6 +28,16 @@ public partial class MainWindow : Window
     private string? _currentText;
     private IStorageFolder? _lastOpenFolder;
     private bool _firstRenderLogged;
+
+    /*  TOC state. _tocVisible is the user's preference (Ctrl+T / View menu)
+        and persists across reloads; the panel additionally hides itself when
+        the document has no headings. Heading controls are matched to parsed
+        entries by document order. */
+    private readonly List<TocEntry> _tocEntries = [];
+    private readonly List<Control> _headingControls = [];
+    private readonly List<Button> _tocButtons = [];
+    private bool _tocVisible = true;
+    private int _currentTocIndex = -1;
 
     public MainWindow() : this([])
     {
@@ -51,8 +64,10 @@ public partial class MainWindow : Window
         plugins.Plugins.Add(new MarkLitePlugin());
         plugins.HyperlinkCommand = new MarkLiteHyperlinkCommand(
             currentDocumentDirectory: () => _currentFile is null ? null : Path.GetDirectoryName(_currentFile),
-            openDocument: LoadFile);
+            openDocument: LoadFile,
+            scrollToAnchor: ScrollToAnchor);
         _viewer.Plugins = plugins;
+        _viewer.HeaderScrolled += (_, _) => UpdateCurrentSection();
 
         this.FindControl<ContentControl>("ViewerHost")!.Content = _viewer;
 
@@ -153,6 +168,7 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() =>
         {
             TaskListMarkerHider.Apply(_viewer);
+            RebuildToc(text);
             if (!_firstRenderLogged)
             {
                 _firstRenderLogged = true;
@@ -225,4 +241,140 @@ public partial class MainWindow : Window
     {
         Close();
     }
+
+    #region TOC sidebar
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.T && e.KeyModifiers == KeyModifiers.Control)
+        {
+            ToggleToc();
+            e.Handled = true;
+            return;
+        }
+        base.OnKeyDown(e);
+    }
+
+    private void OnToggleTocClicked(object? sender, RoutedEventArgs e)
+    {
+        ToggleToc();
+    }
+
+    private void ToggleToc()
+    {
+        _tocVisible = !_tocVisible;
+        UpdateTocPanelVisibility();
+        DebugLog.Write($"toc visibility toggled: {_tocVisible}");
+    }
+
+    private void UpdateTocPanelVisibility()
+    {
+        this.FindControl<Border>("TocPanel")!.IsVisible = _tocVisible && _tocEntries.Count > 0;
+    }
+
+    private void RebuildToc(string markdownText)
+    {
+        _tocEntries.Clear();
+        _tocEntries.AddRange(HeadingParser.Parse(markdownText));
+
+        _headingControls.Clear();
+        _headingControls.AddRange(_viewer.GetVisualDescendants()
+            .OfType<CTextBlock>()
+            .Where(static c => c.Classes.Any(static cl => cl.StartsWith("Heading"))));
+
+        if (_headingControls.Count != _tocEntries.Count)
+        {
+            DebugLog.Write($"toc mismatch: parsed {_tocEntries.Count} headings, rendered {_headingControls.Count}");
+        }
+
+        var list = this.FindControl<StackPanel>("TocList")!;
+        list.Children.Clear();
+        _tocButtons.Clear();
+        _currentTocIndex = -1;
+
+        for (var i = 0; i < _tocEntries.Count; ++i)
+        {
+            var entry = _tocEntries[i];
+            var index = i;
+            var button = new Button
+            {
+                Content = entry.Text,
+                Margin = new Thickness((entry.Level - 1) * 12, 0, 0, 0),
+            };
+            button.Classes.Add("TocEntry");
+            button.Click += (_, _) => ScrollToHeading(index);
+            _tocButtons.Add(button);
+            list.Children.Add(button);
+        }
+
+        DebugLog.Write($"toc built: {_tocEntries.Count} headings");
+        UpdateTocPanelVisibility();
+        UpdateCurrentSection();
+    }
+
+    private void ScrollToHeading(int index)
+    {
+        if (index < 0 || index >= _headingControls.Count)
+        {
+            DebugLog.Write($"scroll-to-heading #{index} out of range");
+            return;
+        }
+
+        var point = _headingControls[index].TranslatePoint(new Point(0, 0), _viewer);
+        if (point is null)
+        {
+            return;
+        }
+
+        var target = Math.Max(0, _viewer.ScrollValue.Y + point.Value.Y - 8);
+        _viewer.ScrollValue = new Vector(_viewer.ScrollValue.X, target);
+        DebugLog.Write($"scroll-to-heading #{index} '{_tocEntries[index].Text}' offset {target:F1}");
+        UpdateCurrentSection();
+    }
+
+    private void ScrollToAnchor(string slug)
+    {
+        var index = _tocEntries.FindIndex(e => string.Equals(e.Slug, slug, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            DebugLog.Write($"anchor not found: #{slug}");
+            return;
+        }
+        DebugLog.Write($"anchor link: #{slug}");
+        ScrollToHeading(index);
+    }
+
+    /// <summary>Highlights the TOC entry of the heading nearest above the viewport top.</summary>
+    private void UpdateCurrentSection()
+    {
+        if (_tocButtons.Count == 0)
+        {
+            return;
+        }
+
+        var best = 0;
+        for (var i = 0; i < _headingControls.Count && i < _tocButtons.Count; ++i)
+        {
+            var point = _headingControls[i].TranslatePoint(new Point(0, 0), _viewer);
+            if (point is not null && point.Value.Y <= 12)
+            {
+                best = i;
+            }
+        }
+
+        if (best == _currentTocIndex)
+        {
+            return;
+        }
+
+        if (_currentTocIndex >= 0 && _currentTocIndex < _tocButtons.Count)
+        {
+            _tocButtons[_currentTocIndex].Classes.Remove("TocEntryCurrent");
+        }
+        _tocButtons[best].Classes.Add("TocEntryCurrent");
+        _currentTocIndex = best;
+        _tocButtons[best].BringIntoView();
+    }
+
+    #endregion
 }

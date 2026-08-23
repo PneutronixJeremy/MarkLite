@@ -10,7 +10,7 @@ namespace MarkLite.Rendering;
     - relative (or absolute) paths to markdown/text files, resolved against the
       open document's directory → opened inside MarkLite;
     - other paths that exist on disk → shell-opened with their default handler;
-    - #anchors → logged no-op until in-document heading navigation exists;
+    - #anchors → scroll to the matching heading in the open document;
     - anything else → logged no-op rather than shell-executing arbitrary strings. */
 internal sealed class MarkLiteHyperlinkCommand : ICommand
 {
@@ -18,13 +18,18 @@ internal sealed class MarkLiteHyperlinkCommand : ICommand
 
     private readonly Func<string?> _currentDocumentDirectory;
     private readonly Action<string> _openDocument;
+    private readonly Action<string> _scrollToAnchor;
 
     public event EventHandler? CanExecuteChanged { add { } remove { } }
 
-    internal MarkLiteHyperlinkCommand(Func<string?> currentDocumentDirectory, Action<string> openDocument)
+    internal MarkLiteHyperlinkCommand(
+        Func<string?> currentDocumentDirectory,
+        Action<string> openDocument,
+        Action<string> scrollToAnchor)
     {
         _currentDocumentDirectory = currentDocumentDirectory;
         _openDocument = openDocument;
+        _scrollToAnchor = scrollToAnchor;
     }
 
     public bool CanExecute(object? parameter)
@@ -49,7 +54,7 @@ internal sealed class MarkLiteHyperlinkCommand : ICommand
 
         if (url.StartsWith('#'))
         {
-            DebugLog.Write($"link ignored (no heading navigation yet): {url}");
+            _scrollToAnchor(Uri.UnescapeDataString(url[1..]));
             return;
         }
 

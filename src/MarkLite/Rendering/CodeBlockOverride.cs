@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using ColorDocument.Avalonia;
@@ -59,10 +60,13 @@ internal sealed class CodeBlockOverride : BlockOverride2
         };
         content.Classes.Add("CodeBlockText");
 
+        /*  Plain (unknown-language) code goes through Inlines as a single Run
+            rather than the Text property, so in-document search can treat
+            every code block uniformly: it extracts and splits Run inlines. */
         var colorCodeLanguage = language.Length > 0 ? CodeHighlighter.MapLanguage(language) : null;
         if (colorCodeLanguage is null)
         {
-            content.Text = code;
+            content.Inlines!.Add(new Run(code));
         }
         else
         {

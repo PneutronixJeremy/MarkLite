@@ -33,10 +33,32 @@
                 <Separator />
                 <MenuItem Header="E_xit" Click="OnExitClicked" />
             </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Find…" Click="OnFindClicked" InputGesture="Ctrl+F" />
+            </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Contents sidebar" Click="OnToggleTocClicked" InputGesture="Ctrl+T" />
             </MenuItem>
         </Menu>
+        <Border Name="FindBar"
+                DockPanel.Dock="Top"
+                IsVisible="False"
+                Background="{DynamicResource MdTableHeaderBackground}"
+                BorderBrush="{DynamicResource MdTableBorder}"
+                BorderThickness="0,0,0,1"
+                Padding="8,5">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBox Name="FindBox" Width="260" Watermark="Find in document" FontSize="12.5" />
+                <TextBlock Name="FindCountText"
+                           VerticalAlignment="Center"
+                           MinWidth="70"
+                           FontSize="12.5"
+                           Foreground="{DynamicResource MdMutedForeground}" />
+                <Button Content="▲" Click="OnFindPrevClicked" ToolTip.Tip="Previous match (Shift+F3)" />
+                <Button Content="▼" Click="OnFindNextClicked" ToolTip.Tip="Next match (F3)" />
+                <Button Content="✕" Click="OnFindCloseClicked" ToolTip.Tip="Close (Esc)" />
+            </StackPanel>
+        </Border>
         <Border Name="StaleBanner"
                 DockPanel.Dock="Top"
                 IsVisible="False"

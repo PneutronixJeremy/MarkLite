@@ -29,6 +29,9 @@
                     <SolidColorBrush x:Key="MdTaskUncheckedBorder">#6E7781</SolidColorBrush>
                     <SolidColorBrush x:Key="MdStaleBannerBackground">#FFF3C4</SolidColorBrush>
                     <SolidColorBrush x:Key="MdStaleBannerForeground">#6B5310</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdSearchMatchBackground">#66E8C61C</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdSearchCurrentBackground">#FF9E2C</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdSearchCurrentForeground">#111418</SolidColorBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="MdPageBackground">#1E1E1E</SolidColorBrush>
@@ -49,6 +52,9 @@
                     <SolidColorBrush x:Key="MdTaskUncheckedBorder">#8B9096</SolidColorBrush>
                     <SolidColorBrush x:Key="MdStaleBannerBackground">#4A3D14</SolidColorBrush>
                     <SolidColorBrush x:Key="MdStaleBannerForeground">#E8D48B</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdSearchMatchBackground">#59D4A72C</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdSearchCurrentBackground">#E8912D</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdSearchCurrentForeground">#141414</SolidColorBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

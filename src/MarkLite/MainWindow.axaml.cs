@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -38,6 +39,13 @@ public partial class MainWindow : Window
     private readonly List<Button> _tocButtons = [];
     private bool _tocVisible = true;
     private int _currentTocIndex = -1;
+
+    /*  In-document search. The debounce timer batches keystrokes in the find
+        box (a full re-highlight per keypress is wasteful on big documents);
+        _findVisible mirrors the find bar and gates F3/Esc handling. */
+    private readonly DocumentSearch _search;
+    private readonly DispatcherTimer _findDebounce;
+    private bool _findVisible;
 
     /*  Idle memory trim. Scrolling fills glyph/layout caches and an idle
         viewer has no allocation pressure, so garbage accumulates until the
@@ -93,6 +101,22 @@ public partial class MainWindow : Window
         idleTrimTimer.Start();
 
         this.FindControl<ContentControl>("ViewerHost")!.Content = _viewer;
+
+        _search = new DocumentSearch(_viewer);
+        _findDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _findDebounce.Tick += (_, _) =>
+        {
+            _findDebounce.Stop();
+            RunSearch(scrollToCurrent: true);
+        };
+        var findBox = this.FindControl<TextBox>("FindBox")!;
+        findBox.TextChanged += (_, _) =>
+        {
+            MarkActivity();
+            _findDebounce.Stop();
+            _findDebounce.Start();
+        };
+        findBox.KeyDown += OnFindBoxKeyDown;
 
         _watcher = new DocumentWatcher();
         _watcher.ChangeSettled += OnFileChangeSettled;
@@ -194,11 +218,20 @@ public partial class MainWindow : Window
     private void RenderMarkdown(string text, Action? afterLayout = null)
     {
         MarkActivity();
+
+        /*  The assignment below replaces the whole control tree, so search
+            undo records would point at discarded controls — forget them now
+            and re-apply the active search once the new tree has laid out. */
+        _search.Detach();
         _viewer.Markdown = TaskListPreprocessor.Apply(text);
         Dispatcher.UIThread.Post(() =>
         {
             TaskListMarkerHider.Apply(_viewer);
             RebuildToc(text);
+            if (_findVisible)
+            {
+                RunSearch(scrollToCurrent: false);
+            }
             if (!_firstRenderLogged)
             {
                 _firstRenderLogged = true;
@@ -272,6 +305,134 @@ public partial class MainWindow : Window
         Close();
     }
 
+    #region in-document search
+
+    private void OnFindClicked(object? sender, RoutedEventArgs e)
+    {
+        ShowFindBar();
+    }
+
+    private void OnFindNextClicked(object? sender, RoutedEventArgs e)
+    {
+        FindMove(backward: false);
+    }
+
+    private void OnFindPrevClicked(object? sender, RoutedEventArgs e)
+    {
+        FindMove(backward: true);
+    }
+
+    private void OnFindCloseClicked(object? sender, RoutedEventArgs e)
+    {
+        CloseFindBar();
+    }
+
+    private void OnFindBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            FindMove(backward: e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            CloseFindBar();
+            e.Handled = true;
+        }
+    }
+
+    private void ShowFindBar()
+    {
+        _findVisible = true;
+        this.FindControl<Border>("FindBar")!.IsVisible = true;
+        var findBox = this.FindControl<TextBox>("FindBox")!;
+        findBox.Focus();
+        findBox.SelectAll();
+        if (!string.IsNullOrEmpty(findBox.Text))
+        {
+            RunSearch(scrollToCurrent: false);
+        }
+    }
+
+    private void CloseFindBar()
+    {
+        _findVisible = false;
+        _findDebounce.Stop();
+        this.FindControl<Border>("FindBar")!.IsVisible = false;
+        _search.Clear();
+        UpdateFindCount();
+        _viewer.Focus();
+        DebugLog.Write("search closed");
+    }
+
+    private void RunSearch(bool scrollToCurrent)
+    {
+        MarkActivity();
+        var term = this.FindControl<TextBox>("FindBox")!.Text ?? string.Empty;
+        _search.Apply(term,
+            FindBrush("MdSearchMatchBackground"),
+            FindBrush("MdSearchCurrentBackground"),
+            FindBrush("MdSearchCurrentForeground"),
+            scrollToCurrent);
+        UpdateFindCount();
+        if (term.Length > 0)
+        {
+            DebugLog.Write($"search '{term}': {_search.Count} matches");
+        }
+    }
+
+    private void FindMove(bool backward)
+    {
+        if (!_findVisible)
+        {
+            return;
+        }
+        MarkActivity();
+
+        /*  A pending debounce means the shown highlights don't reflect the
+            typed term yet — flush it instead of stepping stale matches; the
+            fresh Apply already lands on its first match. */
+        if (_findDebounce.IsEnabled)
+        {
+            _findDebounce.Stop();
+            RunSearch(scrollToCurrent: true);
+            return;
+        }
+
+        if (_search.Count == 0)
+        {
+            return;
+        }
+        if (backward)
+        {
+            _search.MovePrevious();
+        }
+        else
+        {
+            _search.MoveNext();
+        }
+        UpdateFindCount();
+        DebugLog.Write($"search current {_search.CurrentOrdinal + 1} of {_search.Count}");
+    }
+
+    private void UpdateFindCount()
+    {
+        var label = this.FindControl<TextBlock>("FindCountText")!;
+        var term = this.FindControl<TextBox>("FindBox")!.Text ?? string.Empty;
+        label.Text = !_findVisible || term.Length == 0
+            ? string.Empty
+            : _search.Count == 0 ? "0 results" : $"{_search.CurrentOrdinal + 1} of {_search.Count}";
+    }
+
+    private IBrush FindBrush(string key)
+    {
+        return this.TryFindResource(key, ActualThemeVariant, out var value) && value is IBrush brush
+            ? brush
+            : Brushes.Yellow;
+    }
+
+    #endregion
+
     #region TOC sidebar
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -279,6 +440,24 @@ public partial class MainWindow : Window
         if (e.Key == Key.T && e.KeyModifiers == KeyModifiers.Control)
         {
             ToggleToc();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control)
+        {
+            ShowFindBar();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.F3)
+        {
+            FindMove(backward: e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Escape && _findVisible)
+        {
+            CloseFindBar();
             e.Handled = true;
             return;
         }

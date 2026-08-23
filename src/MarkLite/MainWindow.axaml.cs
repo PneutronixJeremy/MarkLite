@@ -39,6 +39,13 @@ public partial class MainWindow : Window
     private bool _tocVisible = true;
     private int _currentTocIndex = -1;
 
+    /*  Idle memory trim. Scrolling fills glyph/layout caches and an idle
+        viewer has no allocation pressure, so garbage accumulates until the
+        user acts again. After 30 s without activity, collect once
+        aggressively; re-armed by the next activity. */
+    private DateTime _lastActivityUtc = DateTime.UtcNow;
+    private bool _idleTrimDone;
+
     public MainWindow() : this([])
     {
     }
@@ -67,7 +74,23 @@ public partial class MainWindow : Window
             openDocument: LoadFile,
             scrollToAnchor: ScrollToAnchor);
         _viewer.Plugins = plugins;
-        _viewer.HeaderScrolled += (_, _) => UpdateCurrentSection();
+        _viewer.HeaderScrolled += (_, _) =>
+        {
+            MarkActivity();
+            UpdateCurrentSection();
+        };
+
+        var idleTrimTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
+        idleTrimTimer.Tick += (_, _) =>
+        {
+            if (!_idleTrimDone && DateTime.UtcNow - _lastActivityUtc > TimeSpan.FromSeconds(30))
+            {
+                _idleTrimDone = true;
+                GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+                DebugLog.Write("idle memory trim");
+            }
+        };
+        idleTrimTimer.Start();
 
         this.FindControl<ContentControl>("ViewerHost")!.Content = _viewer;
 
@@ -162,8 +185,15 @@ public partial class MainWindow : Window
         layout pass that realizes the new controls, hide task-item bullets
         (only possible once they are in the visual tree) and run any
         follow-up (e.g. scroll logging). */
+    private void MarkActivity()
+    {
+        _lastActivityUtc = DateTime.UtcNow;
+        _idleTrimDone = false;
+    }
+
     private void RenderMarkdown(string text, Action? afterLayout = null)
     {
+        MarkActivity();
         _viewer.Markdown = TaskListPreprocessor.Apply(text);
         Dispatcher.UIThread.Post(() =>
         {

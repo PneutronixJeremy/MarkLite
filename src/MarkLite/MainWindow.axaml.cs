@@ -1,8 +1,11 @@
 using System;
 using System.IO;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Markdown.Avalonia;
+using MarkLite.Rendering;
 
 namespace MarkLite;
 
@@ -27,7 +30,19 @@ public partial class MainWindow : Window
             the Avalonia name generator fails to emit a field for x:Name'd
             controls coming from Markdown.Avalonia.Tight (build-time CS0103),
             so the XAML only carries an empty named host. */
-        _viewer = new MarkdownScrollViewer();
+        _viewer = new MarkdownScrollViewer
+        {
+            SelectionEnabled = true,
+            MarkdownStyle = new MarkdownTheme(),
+            MaxWidth = 1100,
+            Margin = new Thickness(28, 6, 28, 0),
+        };
+
+        var plugins = new MdAvPlugins();
+        plugins.Plugins.Add(new MarkLitePlugin());
+        plugins.HyperlinkCommand = new MarkLiteHyperlinkCommand();
+        _viewer.Plugins = plugins;
+
         this.FindControl<ContentControl>("ViewerHost")!.Content = _viewer;
 
         LoadFile(args.Length > 0 ? args[0] : DefaultDocument);
@@ -44,7 +59,14 @@ public partial class MainWindow : Window
         {
             var fullPath = Path.GetFullPath(path);
             var text = File.ReadAllText(fullPath);
-            _viewer.Markdown = text;
+            _viewer.Markdown = TaskListPreprocessor.Apply(text);
+
+            /*  Deferred until after layout: the rendered controls join the
+                visual tree during the layout pass that follows the Markdown
+                assignment. */
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                () => TaskListMarkerHider.Apply(_viewer),
+                Avalonia.Threading.DispatcherPriority.Loaded);
             Title = $"MarkLite — {Path.GetFileName(fullPath)}";
             DebugLog.Write($"loaded {fullPath} ({text.Length} chars)");
         }

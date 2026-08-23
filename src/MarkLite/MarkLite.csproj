@@ -25,5 +25,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.3.9" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.9" />
     <PackageReference Include="Markdown.Avalonia.Tight" Version="11.0.3" />
+    <!-- Syntax highlighting: pure managed regex engine, AOT/trim safe (TextMateSharp rejected: native Oniguruma dependency + heavyweight grammar assets). -->
+    <PackageReference Include="ColorCode.Core" Version="2.0.15" />
   </ItemGroup>
 </Project>

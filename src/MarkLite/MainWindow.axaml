@@ -3,7 +3,7 @@
         x:Class="MarkLite.MainWindow"
         Title="MarkLite"
         Width="1000" Height="750">
-    <DockPanel>
+    <DockPanel Background="{DynamicResource MdPageBackground}">
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
                 <MenuItem Header="_Open…" Click="OnOpenClicked" />

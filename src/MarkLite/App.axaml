@@ -5,4 +5,48 @@
     <Application.Styles>
         <FluentTheme />
     </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- "Default" doubles as the light palette. -->
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="MdPageBackground">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdBodyForeground">#1F2328</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdHeadingForeground">#111418</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdMutedForeground">#57606A</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdInlineCodeBackground">#EFF1F3</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdInlineCodeForeground">#24292F</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdCodeBlockBackground">#F6F8FA</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdCodeForeground">#24292F</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdBlockquoteRule">#D0D7DE</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTableBorder">#D0D7DE</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTableHeaderBackground">#F6F8FA</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTableRowAltBackground">#FAFBFC</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdLinkForeground">#0969DA</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdLinkHoverForeground">#1A7FEB</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdAccent">#2E7CD6</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTaskUncheckedBorder">#6E7781</SolidColorBrush>
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="MdPageBackground">#1E1E1E</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdBodyForeground">#DCDCDC</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdHeadingForeground">#F2F2F2</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdMutedForeground">#A6ADB5</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdInlineCodeBackground">#383B40</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdInlineCodeForeground">#E8E8E8</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdCodeBlockBackground">#26282C</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdCodeForeground">#D8DEE4</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdBlockquoteRule">#4A4D52</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTableBorder">#3F4348</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTableHeaderBackground">#2A2D31</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTableRowAltBackground">#232529</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdLinkForeground">#58A6FF</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdLinkHoverForeground">#82BFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdAccent">#3794FF</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdTaskUncheckedBorder">#8B9096</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

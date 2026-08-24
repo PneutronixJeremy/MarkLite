@@ -60,6 +60,14 @@ internal static class Program
     {
         return AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            /*  Bundled fonts must be REGISTERED as a collection — an ad-hoc
+                "avares://…#Family" FontFamily quietly falls back to the system
+                default under Avalonia 12 (verified by glyph comparison).
+                Font specs reference the collection as "fonts:MarkLite#Name". */
+            .ConfigureFonts(static manager => manager.AddFontCollection(
+                new Avalonia.Media.Fonts.EmbeddedFontCollection(
+                    new Uri("fonts:MarkLite", UriKind.Absolute),
+                    new Uri("avares://MarkLite/Assets/Fonts", UriKind.Absolute))))
             .With(new Win32PlatformOptions
             {
                 /*  Software rendering: a text-document viewer gains nothing

@@ -66,12 +66,14 @@
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Contents sidebar" Click="OnToggleTocClicked" InputGesture="Ctrl+T" />
-                <MenuItem Header="_Body font">
-                    <MenuItem Header="_Roboto" Click="OnBodyFontClicked"
-                              Tag="avares://MarkLite/Assets/Fonts#Roboto, Segoe UI, sans-serif" />
-                    <MenuItem Header="_Lexend" Click="OnBodyFontClicked"
-                              Tag="avares://MarkLite/Assets/Fonts#Lexend, Segoe UI, sans-serif" />
-                    <MenuItem Header="_Segoe UI" Click="OnBodyFontClicked"
+                <MenuItem Name="BodyFontMenu" Header="_Body font">
+                    <MenuItem Header="_Roboto" Click="OnBodyFontClicked" ToggleType="Radio" IsChecked="True"
+                              Tag="fonts:MarkLite#Roboto" />
+                    <MenuItem Header="_Google Sans" Click="OnBodyFontClicked" ToggleType="Radio"
+                              Tag="fonts:MarkLite#Google Sans" />
+                    <MenuItem Header="_Lexend" Click="OnBodyFontClicked" ToggleType="Radio"
+                              Tag="fonts:MarkLite#Lexend" />
+                    <MenuItem Header="_Segoe UI" Click="OnBodyFontClicked" ToggleType="Radio"
                               Tag="Segoe UI Variable Text, Segoe UI, sans-serif" />
                 </MenuItem>
             </MenuItem>

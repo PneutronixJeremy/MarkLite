@@ -12,8 +12,8 @@
     <Application.Resources>
         <ResourceDictionary>
             <!-- Body face is a swappable token (View > Body font). Code face is fixed. -->
-            <FontFamily x:Key="MdBodyFontFamily">avares://MarkLite/Assets/Fonts#Roboto, Segoe UI, sans-serif</FontFamily>
-            <FontFamily x:Key="MdCodeFontFamily">avares://MarkLite/Assets/Fonts#Fira Code Retina, Cascadia Mono, Consolas, monospace</FontFamily>
+            <FontFamily x:Key="MdBodyFontFamily">fonts:MarkLite#Roboto</FontFamily>
+            <FontFamily x:Key="MdCodeFontFamily">fonts:MarkLite#Fira Code Retina</FontFamily>
             <ResourceDictionary.ThemeDictionaries>
                 <!-- "Default" doubles as the light palette. -->
                 <ResourceDictionary x:Key="Default">

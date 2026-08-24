@@ -22,6 +22,11 @@ governed by its own license, available at the linked upstream project.
 | Fira Code (Retina) | SIL Open Font License 1.1 — Copyright (c) The Fira Code Project Authors | https://github.com/tonsky/FiraCode |
 | Roboto | Apache License 2.0 — Copyright Google LLC (newer releases: SIL OFL 1.1) | https://fonts.google.com/specimen/Roboto |
 | Lexend | SIL Open Font License 1.1 — Copyright (c) The Lexend Project Authors | https://github.com/googlefonts/lexend |
+| Google Sans | SIL Open Font License 1.1 — Copyright Google LLC | https://fonts.google.com/specimen/Google+Sans |
+
+The bundled Google Sans files are subset to Latin coverage (a modification
+permitted by the OFL; the license and attribution name-table entries are
+retained in the files).
 
 The SIL Open Font License 1.1 text: https://openfontlicense.org
 The Apache License 2.0 text: https://www.apache.org/licenses/LICENSE-2.0

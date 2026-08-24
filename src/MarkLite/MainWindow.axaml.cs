@@ -151,22 +151,24 @@ public partial class MainWindow : Window
         ActualThemeVariantChanged += (_, _) =>
         {
             DebugLog.Write($"theme changed to {ActualThemeVariant}; re-rendering");
-            foreach (var tab in _tabs)
-            {
-                if (tab.CurrentText is null)
-                {
-                    continue;
-                }
-                if (tab == _activeTab)
-                {
-                    RenderTab(tab, tab.CurrentText, tab.ScrollY);
-                }
-                else
-                {
-                    tab.PendingText = tab.CurrentText;
-                }
-            }
+            RerenderAllTabs();
         };
+
+        /*  Body font: the saved choice first, then the MARKLITE_BODYFONT
+            debug/testing env hook on top (scripted font checks can't click
+            menus). Both run before the first render. */
+        if (UserSettings.BodyFontFamily is { Length: > 0 } savedFont)
+        {
+            Application.Current!.Resources["MdBodyFontFamily"] = new FontFamily(savedFont);
+            SyncBodyFontChecks(savedFont);
+            DebugLog.Write($"body font restored: {savedFont}");
+        }
+        if (Environment.GetEnvironmentVariable("MARKLITE_BODYFONT") is { Length: > 0 } bodyFont)
+        {
+            Application.Current!.Resources["MdBodyFontFamily"] = new FontFamily(bodyFont);
+            SyncBodyFontChecks(bodyFont);
+            DebugLog.Write($"body font from env: {bodyFont}");
+        }
 
         if (args.Length > 0)
         {
@@ -374,15 +376,57 @@ public partial class MainWindow : Window
         return viewer;
     }
 
-    /// <summary>View > Body font. Swaps the app-level font token; DynamicResource restyles live.</summary>
+    /// <summary>View > Body font. Swaps the app-level font token and re-renders.</summary>
     private void OnBodyFontClicked(object? sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem { Tag: string fontSpec })
+        if (sender is not MenuItem { Tag: string fontSpec } clicked)
         {
             return;
         }
         Application.Current!.Resources["MdBodyFontFamily"] = new FontFamily(fontSpec);
+        UserSettings.BodyFontFamily = fontSpec;
+        SyncBodyFontChecks(fontSpec);
         DebugLog.Write($"body font set: {fontSpec}");
+
+        /*  Replacing an existing app-resource value does not reliably reach
+            controls that already resolved it — freshly created controls do,
+            so re-render (same trick the theme switch uses). */
+        RerenderAllTabs();
+    }
+
+    /*  Radio check marks: exactly the entry whose Tag matches shows as chosen.
+        Set explicitly rather than trusting MenuItem's own toggle behavior —
+        re-clicking the current entry must leave it checked. */
+    private void SyncBodyFontChecks(string fontSpec)
+    {
+        foreach (var item in this.FindControl<MenuItem>("BodyFontMenu")!.Items.OfType<MenuItem>())
+        {
+            item.IsChecked = item.Tag as string == fontSpec;
+        }
+    }
+
+    /// <summary>Re-renders every tab (active now, others on activation) and the welcome page.</summary>
+    private void RerenderAllTabs()
+    {
+        foreach (var tab in _tabs)
+        {
+            if (tab.CurrentText is null)
+            {
+                continue;
+            }
+            if (tab == _activeTab)
+            {
+                RenderTab(tab, tab.CurrentText, tab.ScrollY);
+            }
+            else
+            {
+                tab.PendingText = tab.CurrentText;
+            }
+        }
+        if (_welcomeViewer is not null)
+        {
+            _welcomeViewer.Markdown = WelcomeMarkdown;
+        }
     }
 
     #region tabs

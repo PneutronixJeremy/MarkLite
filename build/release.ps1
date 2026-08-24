@@ -3,11 +3,12 @@
   (Setup.exe + full/delta nupkg + portable zip + RELEASES manifest).
 
   Run build\pack.ps1 first. Requires a GitHub token with repo scope:
-  set GITHUB_TOKEN, or pass -Token. -Draft leaves the release unpublished
-  for a manual review on github.com before it goes live.
+  set PneutronixJeremy_Github_Token (GITHUB_TOKEN works as a fallback, e.g.
+  in CI), or pass -Token. -Draft leaves the release unpublished for a manual
+  review on github.com before it goes live.
 #>
 param(
-    [string]$Token = $env:GITHUB_TOKEN,
+    [string]$Token = ($env:PneutronixJeremy_Github_Token ?? $env:GITHUB_TOKEN),
     [switch]$Draft
 )
 $ErrorActionPreference = 'Stop'
@@ -18,7 +19,7 @@ if (-not (Test-Path (Join-Path $releases 'RELEASES'))) {
     throw "No packed release found in releases\ - run build\pack.ps1 first"
 }
 if (-not $Token) {
-    throw 'GitHub token required: set GITHUB_TOKEN or pass -Token'
+    throw 'GitHub token required: set PneutronixJeremy_Github_Token (or GITHUB_TOKEN), or pass -Token'
 }
 
 $version = ([xml](Get-Content (Join-Path $repoRoot 'src\MarkLite\MarkLite.csproj'))).Project.PropertyGroup.Version |

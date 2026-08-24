@@ -120,7 +120,7 @@ points the updater at a local folder or custom URL instead of GitHub.
 
 ```powershell
 .\build\pack.ps1        # AOT publish + vpk pack -> releases\ (Setup.exe, nupkg, portable zip)
-.\build\release.ps1     # upload releases\ to GitHub Releases (needs GITHUB_TOKEN)
+.\build\release.ps1     # upload releases\ to GitHub Releases (needs a repo-scope token, see script)
 ```
 
 The version comes from `<Version>` in `src/MarkLite/MarkLite.csproj` — bump it

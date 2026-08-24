@@ -7,6 +7,8 @@ NativeAOT + trimmed. Built as a lightweight *plan viewer*: open a Markdown plan,
 see real checkboxes, tables, and highlighted code — editing stays in your editor
 of choice.
 
+![MarkLite rendering a plan document — task-list checkboxes, syntax-highlighted C#, contents sidebar with current-section tracking](docs/screenshot-tasks.png)
+
 ## Why
 
 Every mainstream Markdown viewer on Windows drags in a browser engine. MarkLite
@@ -52,6 +54,21 @@ files. Zero `msedgewebview2.exe` children, ever.
   Markdown files.
 - Text selection + copy.
 
+## Screenshots
+
+Document top — headings, nested lists, links, tab strip, contents sidebar:
+
+![Sample document: headings, nested lists, inline styles, links](docs/screenshot-sample.png)
+
+Fenced code with syntax highlighting, blockquote:
+
+![Syntax-highlighted C# fence and blockquote](docs/screenshot-code.png)
+
+A ```` ```mermaid ```` fence rendered as a real native diagram — no browser, no
+JS:
+
+![Mermaid flowchart rendered natively](docs/screenshot-mermaid.png)
+
 ## Build
 
 Requires .NET 10 SDK. Plain build:
@@ -87,3 +104,8 @@ gets its own window (useful for scripted checks).
 Copy `publish\MarkLite.exe` (37.9 MB) + `libSkiaSharp.dll` (11.6 MB) +
 `libHarfBuzzSharp.dll` (2.0 MB) anywhere — 51.4 MB in total. No installer, no
 runtime, no registry, no symbols.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Bundled fonts and library dependencies are
+covered in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

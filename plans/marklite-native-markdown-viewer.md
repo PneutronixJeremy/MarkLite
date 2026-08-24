@@ -21,9 +21,10 @@ either approve the commit or commit it themselves. Only continue to the next pha
 after the user says to. Exception: if the user explicitly grants permission to run
 multiple phases and/or commit per phase, follow that grant exactly as scoped — but
 never assume it. When all phases are done, fill in **Final Recap** and
-**Deployment Plan**. Never reference this plan in code: the plan file is deleted
-when the work is done, so comments like "Phase 2 of the plan" or "see
-plans/foo.md" become dead references — code comments must stand on their own.
+**Deployment Plan**. Never reference this plan in code: comments like "Phase 2
+of the plan" mean nothing outside this document — code comments must stand on
+their own. (Originally the plan was to be deleted when done; the user instead
+chose to commit it, scrubbed, as project history — see AGENTS.md.)
 
 ### Project constraints (binding)
 - **No web engine, ever.** No WebView2, no Chromium, no Node. Verify with the
@@ -1115,7 +1116,7 @@ migration costs real memory for real capability.
   must never pop over the user's foreground work.
 
 ## Phase 11: Velopack packaging + GitHub distribution
-Status: Complete — except the live GitHub release, deferred by the user
+Status: Complete
 
 Distribute MarkLite via GitHub Releases with install + auto-update using
 [Velopack](https://velopack.io) (Squirrel.Windows successor; claims
@@ -1141,7 +1142,7 @@ repo is live and public at github.com/PneutronixJeremy/MarkLite, so tokenless
 - [x] Companion menu item "Make MarkLite the default…": Windows protects `UserChoice` with a hash, so programmatic default-flipping is off the table — the item opens the Windows default-apps settings page (`ms-settings:defaultapps`) and shows a short hint instead. Only added alongside the register option; still requires the user's explicit action in Windows UI.
 - [x] Velopack uninstall hook removes the registration (no orphaned registry keys). _(verified in the e2e test — ProgID, OpenWithProgids values and the `HKCU\Software\MarkLite` state key all gone after uninstall)_
 - [x] GitHub release flow: `build/release.ps1` using `vpk upload github` publishing Setup.exe + nupkg + RELEASES; document manual steps in README. _(gh CLI not installed on this machine — script takes GITHUB_TOKEN env var or -Token; -Draft supported)_
-- [ ] Real-world verify: install from the GitHub release on this machine, bump patch version, publish again, confirm the installed copy self-updates. _(deferred — user chose to run release.ps1 themselves later; `releases/` already holds the icon-equipped v1.0.0 artifacts ready to upload)_
+- [x] Real-world verify: install from the GitHub release on this machine, bump patch version, publish again, confirm the installed copy self-updates. _(done 2026-08-24: user installed v1.0.0 from the published GitHub release, v1.0.1 released (font fixes + Google Sans + persistence + logo v2), installed copy self-updated — via the 7.5 MB delta package. Tags v1.0.0/v1.0.1 created by vpk on GitHub. User confirmed working.)_
 
 ### Verification Plan
 - AOT publish exit 0 with Velopack referenced; WebView2 attribution still empty.
@@ -1256,7 +1257,58 @@ GITHUB_TOKEN; `releases/` holds the finished v1.0.0 artifacts).
   give Markdig (fixing Phase 6's AST assumption natively).
 
 ## Final Recap
-_(write when all phases complete: summary of the entire piece of work)_
+
+MarkLite shipped: a genuinely native Windows Markdown viewer — zero web
+engine — distributed on GitHub Releases with a working self-update loop.
+Built 2026-08-22 → 2026-08-24 across 15 phases (0–8, a stack-migration spike
+10 + migration 10A–10D, packaging 11; Phase 9 dropped as redundant).
+
+- **Stack (final)**: Avalonia 12.1.1 + MarkView.Avalonia 12.2.1 (Markdig),
+  .NET 10, NativeAOT + trimmed, Skia software rendering, ColorCode syntax
+  highlighting, native mermaid (Mermaider) + TeX math (CSharpMath), bundled
+  fonts (Roboto default, Google Sans, Lexend; Fira Code Retina for code).
+  Started on Avalonia 11 + Markdown.Avalonia.Tight; migrated mid-project when
+  the spike proved the Markdig stack deleted three homegrown subsystems
+  (task-list pipeline, heading parser, dual-mode search) and unlocked mermaid.
+- **Features**: MM-style dark/light theme following Windows live; GFM tables,
+  prominent task checkboxes, highlighted fences, mermaid diagrams, math; tabs
+  with single-instance pipe handoff; live reload with scroll preservation and
+  stale-file banner; TOC sidebar with current-section tracking and anchor
+  links; in-document search with in-layout highlighting; selectable body font
+  with persistence (HKCU); optional HKCU-only "Open with" registration (menu +
+  one-time offer, never touches the default handler); Velopack install +
+  background self-update from GitHub Releases.
+- **Numbers (v1.0.1)**: first content render ~55–67 ms AOT (target < 500);
+  working set 65–69 MB typical documents, ~111 MB on 40 KB+ pathological ones
+  (the one missed target — virtualized rendering is the recorded fix);
+  deployment 51.4 MB (exe + 2 native dlls); Setup.exe 28 MB; delta updates
+  ~7.5 MB; WebView2 processes: zero, always.
+- **Verification style that worked**: every phase ended with scripted,
+  input-free checks (debug-log assertions, UIA clicks, PrintWindow
+  screenshots, registry diffs) against the PUBLISHED AOT exe — this caught an
+  AOT-only XAML crash, a mermaid tab-switch crash, a silent symbol bloat
+  (303 MB → 51 MB), and the silent-font-fallback bug that visual "looks fine"
+  checks had passed for two days.
 
 ## Deployment Plan
-_(write when all phases complete: step-by-step deployment instructions)_
+
+Routine release (from a clean main, all tests green):
+1. Bump `<Version>` in `src/MarkLite/MarkLite.csproj` (single source of truth).
+2. Commit (`Distribution > vX.Y.Z: …`), `git push` (user-run).
+3. `.\build\pack.ps1` — AOT publish + `vpk pack` into `releases/` (keep the
+   previous release's files in `releases/` so vpk builds a delta package).
+4. `.\build\release.ps1` — uploads Setup.exe + full/delta nupkg + portable zip
+   + RELEASES manifest to GitHub Releases and creates the `vX.Y.Z` tag.
+   Needs `PneutronixJeremy_Github_Token` (fine-grained PAT, Contents R/W) or
+   `GITHUB_TOKEN`; `-Draft` for a reviewed release. PowerShell 7 required.
+5. Installed copies self-update: background check ~3 s after launch, silent
+   download, "Restart to update" banner or apply-on-exit. Verify with
+   `MARKLITE_DEBUG=1` on the installed exe if paranoid.
+
+Machine prerequisites for building: .NET 10 SDK, `vpk` global tool, and the
+VS-less linker environment baked into `build/publish.ps1` (MSVC toolset on
+PATH + Windows SDK import libs staged from the Microsoft.Windows.SDK.CPP.x64
+NuGet package; a machine with the C++ workload installed can use stock
+`dotnet publish` instead). End users need nothing: Setup.exe is per-user, no
+admin, no runtime install; the portable zip runs from any folder (no
+auto-update there).

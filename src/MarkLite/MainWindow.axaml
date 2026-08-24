@@ -65,6 +65,14 @@
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Contents sidebar" Click="OnToggleTocClicked" InputGesture="Ctrl+T" />
+                <MenuItem Header="_Body font">
+                    <MenuItem Header="_Roboto" Click="OnBodyFontClicked"
+                              Tag="avares://MarkLite/Assets/Fonts#Roboto, Segoe UI, sans-serif" />
+                    <MenuItem Header="_Lexend" Click="OnBodyFontClicked"
+                              Tag="avares://MarkLite/Assets/Fonts#Lexend, Segoe UI, sans-serif" />
+                    <MenuItem Header="_Segoe UI" Click="OnBodyFontClicked"
+                              Tag="Segoe UI Variable Text, Segoe UI, sans-serif" />
+                </MenuItem>
             </MenuItem>
         </Menu>
         <Border Name="TabStripBorder"
@@ -85,7 +93,7 @@
                 BorderThickness="0,0,0,1"
                 Padding="8,5">
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBox Name="FindBox" Width="260" Watermark="Find in document" FontSize="12.5" />
+                <TextBox Name="FindBox" Width="260" PlaceholderText="Find in document" FontSize="12.5" />
                 <TextBlock Name="FindCountText"
                            VerticalAlignment="Center"
                            MinWidth="70"

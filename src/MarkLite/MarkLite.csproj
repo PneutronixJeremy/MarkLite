@@ -25,11 +25,21 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.9" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.9" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.9" />
-    <PackageReference Include="Markdown.Avalonia.Tight" Version="11.0.3" />
-    <!-- Syntax highlighting: pure managed regex engine, AOT/trim safe (TextMateSharp rejected: native Oniguruma dependency + heavyweight grammar assets). -->
+    <!-- Bundled fonts: Fira Code Retina (OFL) for code, Roboto (Apache-2.0) and
+         Lexend (OFL) as selectable body faces — no system-install dependency. -->
+    <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <!-- Markdig-based rendering stack (replaces Markdown.Avalonia.Tight; spike-proven under AOT). -->
+    <PackageReference Include="MarkView.Avalonia" Version="12.2.1" />
+    <PackageReference Include="MarkView.Avalonia.Mermaid" Version="12.2.1" />
+    <PackageReference Include="MarkView.Avalonia.Math" Version="12.2.1" />
+    <!-- Syntax highlighting: pure managed regex engine, AOT/trim safe. Chosen over the
+         TextMate satellite package, which costs ~19 MB of grammar assets in the exe. -->
     <PackageReference Include="ColorCode.Core" Version="2.0.15" />
   </ItemGroup>
 </Project>

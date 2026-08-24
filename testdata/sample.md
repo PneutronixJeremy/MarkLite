@@ -63,7 +63,7 @@ public sealed class Document
 > Markdown is intended to be as easy-to-read and easy-to-write as is feasible.
 > Readability, however, is emphasized above all else.
 
-## Mermaid (expected: plain code block, no diagram)
+## Mermaid (renders as a native diagram)
 
 ```mermaid
 graph TD

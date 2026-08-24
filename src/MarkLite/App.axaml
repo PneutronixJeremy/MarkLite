@@ -4,10 +4,16 @@
              RequestedThemeVariant="Default">
     <Application.Styles>
         <FluentTheme />
+        <!-- MarkView's defaults first, MarkLite's MM-dark overrides after (later wins). -->
+        <StyleInclude Source="avares://MarkView.Avalonia/Themes/MarkdownTheme.axaml" />
+        <StyleInclude Source="avares://MarkLite/Rendering/MarkdownTheme.axaml" />
     </Application.Styles>
 
     <Application.Resources>
         <ResourceDictionary>
+            <!-- Body face is a swappable token (View > Body font). Code face is fixed. -->
+            <FontFamily x:Key="MdBodyFontFamily">avares://MarkLite/Assets/Fonts#Roboto, Segoe UI, sans-serif</FontFamily>
+            <FontFamily x:Key="MdCodeFontFamily">avares://MarkLite/Assets/Fonts#Fira Code Retina, Cascadia Mono, Consolas, monospace</FontFamily>
             <ResourceDictionary.ThemeDictionaries>
                 <!-- "Default" doubles as the light palette. -->
                 <ResourceDictionary x:Key="Default">

@@ -11,9 +11,9 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
-using ColorTextBlock.Avalonia;
-using Markdown.Avalonia;
+using Markdig;
 using MarkLite.Rendering;
+using MarkView.Avalonia;
 
 namespace MarkLite;
 
@@ -34,8 +34,16 @@ public partial class MainWindow : Window
         (title, stale banner, TOC, find box). Zero tabs = welcome state. */
     private readonly List<DocumentTab> _tabs = [];
     private DocumentTab? _activeTab;
-    private MarkdownScrollViewer? _welcomeViewer;
+    private MarkdownViewer? _welcomeViewer;
     private readonly MarkLiteHyperlinkCommand _hyperlinkCommand;
+
+    /*  One pipeline and one renderer-extension instance shared by all tabs —
+        both are stateless across render passes. Task lists, tables, autolinks
+        and friends come from UseSupportedExtensions (MarkView's default set);
+        UseMathematics feeds the Math package's block/inline renderers. */
+    private static readonly MarkdownPipeline SharedPipeline =
+        new MarkdownPipelineBuilder().UseSupportedExtensions().UseMathematics().Build();
+    private static readonly MarkLiteRenderExtension RenderExtension = new();
 
     private readonly ContentControl _viewerHost;
     private readonly TextBox _findBox;
@@ -139,7 +147,7 @@ public partial class MainWindow : Window
                 }
                 if (tab == _activeTab)
                 {
-                    RenderTab(tab, tab.CurrentText);
+                    RenderTab(tab, tab.CurrentText, tab.ScrollY);
                 }
                 else
                 {
@@ -177,6 +185,33 @@ public partial class MainWindow : Window
     {
         _lastActivityUtc = DateTime.UtcNow;
         _idleTrimDone = false;
+    }
+
+    private static MarkdownViewer CreateViewer()
+    {
+        var viewer = new MarkdownViewer
+        {
+            Pipeline = SharedPipeline,
+            MaxWidth = 1100,
+            Margin = new Thickness(28, 6, 28, 0),
+        };
+        /*  Without this, wide content (long code lines, wide tables) is
+            measured unbounded and overflows instead of wrapping/scrolling
+            inside its own block. */
+        ScrollViewer.SetHorizontalScrollBarVisibility(viewer,
+            Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled);
+        return viewer;
+    }
+
+    /// <summary>View > Body font. Swaps the app-level font token; DynamicResource restyles live.</summary>
+    private void OnBodyFontClicked(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string fontSpec })
+        {
+            return;
+        }
+        Application.Current!.Resources["MdBodyFontFamily"] = new FontFamily(fontSpec);
+        DebugLog.Write($"body font set: {fontSpec}");
     }
 
     #region tabs
@@ -217,22 +252,17 @@ public partial class MainWindow : Window
 
     private DocumentTab CreateTab()
     {
-        /*  The markdown control is created in code rather than named in XAML:
-            the Avalonia name generator fails to emit a field for x:Name'd
-            controls coming from Markdown.Avalonia.Tight (build-time CS0103),
-            so the XAML only carries an empty named host. */
-        var viewer = new MarkdownScrollViewer
-        {
-            SelectionEnabled = true,
-            SaveScrollValueWhenContentUpdated = true,
-            MarkdownStyle = new MarkdownTheme(),
-            MaxWidth = 1100,
-            Margin = new Thickness(28, 6, 28, 0),
-        };
-        var plugins = new MdAvPlugins();
-        plugins.Plugins.Add(new MarkLitePlugin());
-        plugins.HyperlinkCommand = _hyperlinkCommand;
-        viewer.Plugins = plugins;
+        var viewer = CreateViewer();
+
+        /*  Registration order is load-bearing: UseMermaid front-inserts a
+            renderer that broadly claims every fenced block, and MarkLite's
+            extension must register after it so its own code renderer lands
+            ahead (it forwards mermaid fences back). UseMath re-fronts its
+            narrow math renderer regardless. */
+        viewer.UseMermaid();
+        viewer.Extensions.Add(RenderExtension);
+        viewer.UseMath();
+        viewer.LinkClicked += (_, e) => _hyperlinkCommand.Execute(e.Url);
 
         var label = new TextBlock { Text = "Untitled", VerticalAlignment = VerticalAlignment.Center };
         var nameButton = new Button { Content = label };
@@ -254,14 +284,29 @@ public partial class MainWindow : Window
             StripLabel = label,
         };
 
-        viewer.HeaderScrolled += (_, _) =>
+        /*  Current-section tracking rides the template ScrollViewer's
+            ScrollChanged. The template only exists once the viewer has been
+            attached (tab activated), so the hook is installed lazily on first
+            attachment. */
+        viewer.AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(() =>
         {
-            MarkActivity();
-            if (_activeTab == tab)
+            /*  Posted at Loaded priority: the template (and with it
+                PART_ScrollViewer) is applied during the layout pass that
+                follows attachment, not at attachment itself. */
+            if (tab.ScrollHooked || tab.Scroller is not { } scrollViewer)
             {
-                UpdateCurrentSection();
+                return;
             }
-        };
+            tab.ScrollHooked = true;
+            scrollViewer.ScrollChanged += (_, _) =>
+            {
+                MarkActivity();
+                if (_activeTab == tab)
+                {
+                    UpdateCurrentSection();
+                }
+            };
+        }, DispatcherPriority.Loaded);
         nameButton.Click += (_, _) => ActivateTab(tab);
         closeButton.Click += (_, _) => CloseTab(tab);
         item.PointerPressed += (_, e) =>
@@ -330,7 +375,7 @@ public partial class MainWindow : Window
 
         if (_activeTab is not null)
         {
-            _activeTab.SavedScrollY = _activeTab.Viewer.ScrollValue.Y;
+            _activeTab.SavedScrollY = _activeTab.ScrollY;
             _activeTab.StripItem.Classes.Remove("TabItemActive");
             DebugLog.Write($"tab scroll saved {_activeTab.SavedScrollY:F1} for '{_activeTab.DisplayName}'");
         }
@@ -354,7 +399,7 @@ public partial class MainWindow : Window
                 detached viewer cannot lay out, so the render was deferred to
                 now. The render pipeline also refreshes TOC and search. */
             tab.CurrentText = tab.PendingText;
-            RenderTab(tab, tab.PendingText, RestoreActiveTabScroll);
+            RenderTab(tab, tab.PendingText, tab.SavedScrollY);
         }
         else
         {
@@ -389,16 +434,16 @@ public partial class MainWindow : Window
             {
                 return;
             }
-            tab.Viewer.ScrollValue = new Vector(tab.Viewer.ScrollValue.X, tab.SavedScrollY);
+            tab.ScrollY = tab.SavedScrollY;
             Dispatcher.UIThread.Post(() =>
             {
                 if (_activeTab != tab)
                 {
                     return;
                 }
-                tab.Viewer.ScrollValue = new Vector(tab.Viewer.ScrollValue.X, tab.SavedScrollY);
+                tab.ScrollY = tab.SavedScrollY;
                 UpdateCurrentSection();
-                DebugLog.Write($"tab scroll restored {tab.Viewer.ScrollValue.Y:F1}");
+                DebugLog.Write($"tab scroll restored {tab.ScrollY:F1}");
             }, DispatcherPriority.Background);
         }, DispatcherPriority.Loaded);
     }
@@ -434,13 +479,11 @@ public partial class MainWindow : Window
     private void ShowWelcome()
     {
         _activeTab = null;
-        _welcomeViewer ??= new MarkdownScrollViewer
+        if (_welcomeViewer is null)
         {
-            MarkdownStyle = new MarkdownTheme(),
-            MaxWidth = 1100,
-            Margin = new Thickness(28, 6, 28, 0),
-            Markdown = WelcomeMarkdown,
-        };
+            _welcomeViewer = CreateViewer();
+            _welcomeViewer.Markdown = WelcomeMarkdown;
+        }
         _viewerHost.Content = _welcomeViewer;
         Title = "MarkLite";
         SetStaleBanner(null);
@@ -508,9 +551,10 @@ public partial class MainWindow : Window
 
             if (tab == _activeTab)
             {
-                var savedScroll = tab.Viewer.ScrollValue;
-                DebugLog.Write($"reload triggered: {tab.FilePath}; scroll saved {savedScroll.Y:F1}");
-                RenderTab(tab, text, () => DebugLog.Write($"scroll restored {tab.Viewer.ScrollValue.Y:F1}"));
+                var savedScroll = tab.ScrollY;
+                DebugLog.Write($"reload triggered: {tab.FilePath}; scroll saved {savedScroll:F1}");
+                RenderTab(tab, text, savedScroll,
+                    () => DebugLog.Write($"scroll restored {tab.ScrollY:F1}"));
             }
             else
             {
@@ -530,12 +574,13 @@ public partial class MainWindow : Window
 
     #endregion
 
-    /*  Single render path for a tab: preprocess task lists, assign, then after
-        the layout pass that realizes the new controls, hide task-item bullets,
-        rebuild TOC data and re-apply search (only possible once controls are
-        in the visual tree). Inactive tabs cannot lay out, so their render is
-        parked in PendingText until activation. */
-    private void RenderTab(DocumentTab tab, string text, Action? afterLayout = null)
+    /*  Single render path for a tab: assign markdown, then after the layout
+        pass that realizes the new controls, restore the scroll offset (the
+        viewer resets it to 0 on every content set), rebuild TOC data and
+        re-apply search (only possible once controls are in the visual tree).
+        Inactive tabs cannot lay out, so their render is parked in PendingText
+        until activation. */
+    private void RenderTab(DocumentTab tab, string text, double restoreScrollY = 0, Action? afterLayout = null)
     {
         if (tab != _activeTab)
         {
@@ -546,10 +591,23 @@ public partial class MainWindow : Window
         MarkActivity();
         tab.Search.Detach();
         tab.PendingText = null;
-        tab.Viewer.Markdown = TaskListPreprocessor.Apply(text);
+        tab.Viewer.Markdown = text;
         Dispatcher.UIThread.Post(() =>
         {
-            TaskListMarkerHider.Apply(tab.Viewer);
+            /*  Two-pass restore, same reason as RestoreActiveTabScroll: at
+                Loaded priority the fresh tree may report a smaller extent and
+                the first set gets clamped. */
+            if (restoreScrollY > 0)
+            {
+                tab.ScrollY = restoreScrollY;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (tab == _activeTab)
+                    {
+                        tab.ScrollY = restoreScrollY;
+                    }
+                }, DispatcherPriority.Background);
+            }
             RebuildTocData(tab, text);
             if (tab == _activeTab)
             {
@@ -850,8 +908,9 @@ public partial class MainWindow : Window
 
         tab.HeadingControls.Clear();
         tab.HeadingControls.AddRange(tab.Viewer.GetVisualDescendants()
-            .OfType<CTextBlock>()
-            .Where(static c => c.Classes.Any(static cl => cl.StartsWith("Heading"))));
+            .OfType<TextBlock>()
+            .Where(static c => c.Classes.Any(static cl =>
+                cl.Length == 11 && cl.StartsWith("markdown-h") && char.IsDigit(cl[10]))));
 
         if (tab.HeadingControls.Count != tab.TocEntries.Count)
         {
@@ -905,8 +964,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var target = Math.Max(0, tab.Viewer.ScrollValue.Y + point.Value.Y - 8);
-        tab.Viewer.ScrollValue = new Vector(tab.Viewer.ScrollValue.X, target);
+        var target = Math.Max(0, tab.ScrollY + point.Value.Y - 8);
+        tab.ScrollY = target;
         DebugLog.Write($"scroll-to-heading #{index} '{tab.TocEntries[index].Text}' offset {target:F1}");
         UpdateCurrentSection();
     }

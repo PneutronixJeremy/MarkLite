@@ -20,8 +20,12 @@ internal static class Program
         /*  Single-instance: with a file argument, hand it to a running primary
             instance and exit instead of opening a second window. A primary
             that cannot be reached (or a no-argument launch when one exists)
-            falls through and runs standalone. */
-        if (!SingleInstance.TryBecomePrimary() && args.Length > 0)
+            falls through and runs standalone. MARKLITE_STANDALONE=1 skips the
+            mechanism entirely — a second process neither claims the pipe nor
+            hands off (used by verification scripts; also handy for comparing
+            builds side by side). */
+        var standalone = Environment.GetEnvironmentVariable("MARKLITE_STANDALONE") == "1";
+        if (!standalone && !SingleInstance.TryBecomePrimary() && args.Length > 0)
         {
             var fullPath = System.IO.Path.GetFullPath(args[0]);
             if (SingleInstance.SendToPrimary(fullPath))

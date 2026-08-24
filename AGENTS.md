@@ -2,8 +2,12 @@
 
 ## Plans and sensitive information
 
-- `plans/` is local-only and gitignored. Never commit anything under it, and
-  never lift its contents into committed files verbatim.
+- `plans/` is local-only and gitignored, with ONE exception:
+  `plans/marklite-native-markdown-viewer.md` is committed (user decision
+  2026-08-24) and must therefore stay scrub-clean at all times — every edit to
+  it follows the sensitive-information rules below. `plans/reference/` and
+  everything else under `plans/` stays untracked; the committed plan may
+  mention those files but readers of the public repo cannot see them.
 - Plan files, and any file that might ever be committed, must not contain
   sensitive or machine-/user-identifying information: no absolute local paths
   (beyond what a build script functionally requires), no personal details or

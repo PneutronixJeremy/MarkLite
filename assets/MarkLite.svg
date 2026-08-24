@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- C2: checkbox + plan lines, third line replaced by a feather ("lite" as lightweight) -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#242B38"/>
+      <stop offset="1" stop-color="#141922"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
+  <rect x="40" y="76" width="104" height="104" rx="24" fill="#3B82F6"/>
+  <path d="M 68 128 L 92 152 L 118 108"
+        fill="none" stroke="#FFFFFF" stroke-width="18"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 168 100 L 218 100 M 168 128 L 218 128"
+        fill="none" stroke="#E7ECF3" stroke-width="16" stroke-linecap="round"/>
+  <!-- feather: filled quill with a center rib, sweeping up-right -->
+  <path d="M 164 184 C 168 156 190 136 226 128 C 222 158 200 180 168 186 Z"
+        fill="#8FC0FF"/>
+  <path d="M 168 182 C 182 170 202 152 220 134"
+        fill="none" stroke="#1B2230" stroke-width="6" stroke-linecap="round"/>
+</svg>

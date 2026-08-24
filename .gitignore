@@ -3,11 +3,16 @@ bin/
 obj/
 publish/
 publish-stage/
+releases/
 
-# Local planning documents — never committed (may contain machine/user specifics)
-plans/
+# Local planning material stays untracked (reference screenshots, backups) —
+# EXCEPT the main plan document, which is committed in scrubbed form
+# (see AGENTS.md for the scrub rules).
+plans/*
+!plans/marklite-native-markdown-viewer.md
 
 # User/IDE
+.claude/settings.local.json
 *.user
 .vs/
 .idea/

@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="MarkLite.MainWindow"
         Title="MarkLite"
+        Icon="avares://MarkLite/Assets/MarkLite.ico"
         Width="1000" Height="750"
         DragDrop.AllowDrop="True">
     <Window.Styles>
@@ -74,6 +75,16 @@
                               Tag="Segoe UI Variable Text, Segoe UI, sans-serif" />
                 </MenuItem>
             </MenuItem>
+            <MenuItem Header="_Options">
+                <MenuItem Name="RegisterOpenWithItem"
+                          Header="Register 'Open with' for .md/.markdown"
+                          ToggleType="CheckBox"
+                          Click="OnRegisterOpenWithClicked" />
+                <MenuItem Header="Make MarkLite the _default…" Click="OnMakeDefaultClicked" />
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_Check for updates" Click="OnCheckForUpdatesClicked" />
+            </MenuItem>
         </Menu>
         <Border Name="TabStripBorder"
                 DockPanel.Dock="Top"
@@ -112,6 +123,33 @@
             <TextBlock Name="StaleText"
                        Foreground="{DynamicResource MdStaleBannerForeground}"
                        FontSize="12.5" />
+        </Border>
+        <!--  Notice banner: update availability, the one-time "Open with" offer,
+              and similar non-blocking notices. One optional action button whose
+              label/behavior the caller sets, plus dismiss.  -->
+        <Border Name="NoticeBanner"
+                DockPanel.Dock="Top"
+                IsVisible="False"
+                Background="{DynamicResource MdStaleBannerBackground}"
+                Padding="10,4">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Name="NoticeText"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource MdStaleBannerForeground}"
+                           FontSize="12.5" />
+                <Button Name="NoticeActionButton"
+                        IsVisible="False"
+                        FontSize="12.5"
+                        Click="OnNoticeActionClicked" />
+                <Button Name="NoticeSecondaryButton"
+                        IsVisible="False"
+                        FontSize="12.5"
+                        Click="OnNoticeSecondaryClicked" />
+                <Button Content="✕"
+                        FontSize="12.5"
+                        ToolTip.Tip="Dismiss"
+                        Click="OnNoticeDismissClicked" />
+            </StackPanel>
         </Border>
         <Grid ColumnDefinitions="Auto,*">
             <Border Name="TocPanel"

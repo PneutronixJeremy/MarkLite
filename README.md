@@ -1,3 +1,5 @@
+<img src="assets/MarkLite.svg" width="112" align="right" alt="MarkLite logo — accent checkbox, plan lines, and a quill feather">
+
 # MarkLite
 
 A genuinely native Windows Markdown **viewer** — no web engine, no Electron, no
@@ -6,6 +8,14 @@ WebView2, no Node. Avalonia 12 + Skia, C#, .NET 10, Markdig parsing through
 NativeAOT + trimmed. Built as a lightweight *plan viewer*: open a Markdown plan,
 see real checkboxes, tables, and highlighted code — editing stays in your editor
 of choice.
+
+## Install
+
+Grab `MarkLite-win-Setup.exe` from the
+[latest release](https://github.com/PneutronixJeremy/MarkLite/releases/latest) —
+per-user install, no admin prompt, updates itself from GitHub Releases. Prefer
+no installer? `MarkLite-win-Portable.zip` from the same page runs from any
+folder (portable copies don't auto-update).
 
 ![MarkLite rendering a plan document — task-list checkboxes, syntax-highlighted C#, contents sidebar with current-section tracking](docs/screenshot-tasks.png)
 
@@ -53,6 +63,12 @@ files. Zero `msedgewebview2.exe` children, ever.
 - Open via CLI argument, File > Open, drag-drop, or relative links between
   Markdown files.
 - Text selection + copy.
+- Installer + auto-update via [Velopack](https://velopack.io): per-user install
+  (no admin), background update check against GitHub Releases, silent download,
+  applies on restart. Portable zip for the no-install crowd.
+- Optional "Open with" registration for `.md`/`.markdown` (Options menu, or the
+  one-time offer on first launch) — HKCU only, never touches your default
+  handler, fully removed on uninstall.
 
 ## Screenshots
 
@@ -95,15 +111,28 @@ MarkLite.exe path\to\file.md
 ```
 
 No argument opens the welcome page. `MARKLITE_DEBUG=1` prints diagnostics
-(startup timing, file loads, reloads, link routing, search, TOC) to stderr;
-`MARKLITE_STANDALONE=1` skips the single-instance handoff so a launch always
-gets its own window (useful for scripted checks).
+(startup timing, file loads, reloads, link routing, search, TOC, updates) to
+stderr; `MARKLITE_STANDALONE=1` skips the single-instance handoff so a launch
+always gets its own window (useful for scripted checks); `MARKLITE_UPDATE_URL`
+points the updater at a local folder or custom URL instead of GitHub.
 
-## Deployment
+## Packaging a release
+
+```powershell
+.\build\pack.ps1        # AOT publish + vpk pack -> releases\ (Setup.exe, nupkg, portable zip)
+.\build\release.ps1     # upload releases\ to GitHub Releases (needs GITHUB_TOKEN)
+```
+
+The version comes from `<Version>` in `src/MarkLite/MarkLite.csproj` — bump it
+there, pack, release. Installed copies pick the new version up automatically:
+checked in the background after startup (or Help > Check for updates),
+downloaded silently, applied on the next restart.
+
+## Deployment (manual)
 
 Copy `publish\MarkLite.exe` (37.9 MB) + `libSkiaSharp.dll` (11.6 MB) +
-`libHarfBuzzSharp.dll` (2.0 MB) anywhere — 51.4 MB in total. No installer, no
-runtime, no registry, no symbols.
+`libHarfBuzzSharp.dll` (2.0 MB) anywhere — 51.4 MB in total. No runtime, no
+registry, no symbols.
 
 ## License
 

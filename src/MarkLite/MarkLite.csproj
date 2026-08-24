@@ -3,8 +3,13 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>MarkLite</RootNamespace>
+    <!-- Single source of truth for the app version; build/pack.ps1 reads it for vpk. -->
+    <Version>1.0.0</Version>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Exe icon; the same .ico is linked below as an AvaloniaResource for the
+         window/taskbar icon, and build/pack.ps1 hands it to vpk for the installer. -->
+    <ApplicationIcon>..\..\assets\MarkLite.ico</ApplicationIcon>
 
     <!-- NativeAOT + trimming — settings proven by the AotSpike project -->
     <PublishAot>true</PublishAot>
@@ -38,6 +43,7 @@
     <!-- Bundled fonts: Fira Code Retina (OFL) for code, Roboto (Apache-2.0) and
          Lexend (OFL) as selectable body faces — no system-install dependency. -->
     <AvaloniaResource Include="Assets\Fonts\*.ttf" />
+    <AvaloniaResource Include="..\..\assets\MarkLite.ico" Link="Assets\MarkLite.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -51,6 +57,9 @@
     <!-- Syntax highlighting: pure managed regex engine, AOT/trim safe. Chosen over the
          TextMate satellite package, which costs ~19 MB of grammar assets in the exe. -->
     <PackageReference Include="ColorCode.Core" Version="2.0.15" />
+    <!-- Install/update framework (Squirrel successor); packs via the vpk CLI,
+         updates from GitHub Releases. Verified AOT/trim clean in Phase 11. -->
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <!-- Keep symbol files out of the published deployment (see NativeDebugSymbols above). -->

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -69,6 +71,12 @@ public partial class MainWindow : Window
     private bool _findVisible;
     private bool _suppressFindEvents;
 
+    /*  Velopack update flow (check → silent download → offer restart) plus the
+        action wired to the notice banner's single configurable button. */
+    private readonly UpdateService _updateService = new();
+    private Action? _noticeAction;
+    private Action? _noticeSecondaryAction;
+
     /*  Idle memory trim. Scrolling fills glyph/layout caches and an idle
         viewer has no allocation pressure, so garbage accumulates until the
         user acts again. After 30 s without activity, collect once
@@ -128,6 +136,10 @@ public partial class MainWindow : Window
             {
                 tab.Dispose();
             }
+            /*  A downloaded-but-not-applied update installs itself once this
+                process exits, so a plain close still lands on the new version
+                next launch. No-op when nothing is pending. */
+            _updateService.ApplyOnExit();
         };
 
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
@@ -175,11 +187,165 @@ public partial class MainWindow : Window
             Activate();
         });
 
+        this.FindControl<MenuItem>("RegisterOpenWithItem")!.IsChecked = FileAssociation.IsRegistered;
+
         Opened += (_, _) =>
         {
             DebugLog.Write($"startup: window opened {Program.StartupTimer.ElapsedMilliseconds} ms after process start");
+            OfferOpenWith();
+            _ = CheckForUpdatesInBackground();
         };
     }
+
+    #region updates and notices
+
+    /*  Installed-copy-only: offer the "Open with" registration in a dismissable
+        banner instead of a modal. Semantics are yes / not-now / never: Register
+        answers it, "Don't show again" answers it negatively, and the plain ✕
+        dismiss leaves it unanswered so the offer returns on the next launch.
+        Dev/portable builds never see it (IsInstalled is false there). */
+    private void OfferOpenWith()
+    {
+        if (!_updateService.IsInstalled || FileAssociation.OpenWithOffered || FileAssociation.IsRegistered)
+        {
+            return;
+        }
+        ShowNotice(
+            "Add MarkLite to the \"Open with\" menu for .md/.markdown files? (Changeable any time under Options.)",
+            "Register",
+            () =>
+            {
+                FileAssociation.OpenWithOffered = true;
+                FileAssociation.Register();
+                this.FindControl<MenuItem>("RegisterOpenWithItem")!.IsChecked = true;
+                ShowNotice(
+                    "Registered. To make MarkLite the default, use Options → Make MarkLite the default…",
+                    actionLabel: null, action: null);
+            },
+            "Don't show again",
+            () =>
+            {
+                FileAssociation.OpenWithOffered = true;
+                HideNotice();
+            });
+    }
+
+    private async Task CheckForUpdatesInBackground()
+    {
+        /*  Small delay keeps the first render and the network check apart;
+            rendering never waits on updates. Offline or no releases: the
+            service logs and returns null. */
+        await Task.Delay(TimeSpan.FromSeconds(3));
+        var update = await _updateService.CheckAndDownloadAsync();
+        if (update is null)
+        {
+            return;
+        }
+        /*  Do not steal the banner from an earlier notice (e.g. the Open-with
+            offer): the update still applies on exit, and Help > Check for
+            updates re-surfaces it on demand. */
+        if (!this.FindControl<Border>("NoticeBanner")!.IsVisible)
+        {
+            ShowNotice($"MarkLite {update.TargetFullRelease.Version} is ready.",
+                "Restart to update", _updateService.RestartToApply);
+        }
+        else
+        {
+            DebugLog.Write("update banner deferred: notice banner already in use");
+        }
+    }
+
+    private async void OnCheckForUpdatesClicked(object? sender, RoutedEventArgs e)
+    {
+        if (!_updateService.IsInstalled)
+        {
+            ShowNotice("Updates work only in an installed copy — this is a portable/dev build.",
+                actionLabel: null, action: null);
+            return;
+        }
+        if (_updateService.Pending is { } pending)
+        {
+            ShowNotice($"MarkLite {pending.TargetFullRelease.Version} is ready.",
+                "Restart to update", _updateService.RestartToApply);
+            return;
+        }
+
+        ShowNotice("Checking for updates…", actionLabel: null, action: null);
+        var update = await _updateService.CheckAndDownloadAsync();
+        if (update is not null)
+        {
+            ShowNotice($"MarkLite {update.TargetFullRelease.Version} is ready.",
+                "Restart to update", _updateService.RestartToApply);
+        }
+        else
+        {
+            ShowNotice($"MarkLite {_updateService.CurrentVersion} is up to date.",
+                actionLabel: null, action: null);
+        }
+    }
+
+    private void OnRegisterOpenWithClicked(object? sender, RoutedEventArgs e)
+    {
+        if (FileAssociation.IsRegistered)
+        {
+            FileAssociation.Unregister();
+        }
+        else
+        {
+            FileAssociation.Register();
+        }
+        this.FindControl<MenuItem>("RegisterOpenWithItem")!.IsChecked = FileAssociation.IsRegistered;
+    }
+
+    private void OnMakeDefaultClicked(object? sender, RoutedEventArgs e)
+    {
+        /*  Windows protects the per-extension default (UserChoice) with a
+            hash, so flipping it programmatically is off the table by design —
+            open the Settings page and tell the user what to look for. */
+        DebugLog.Write("opening Windows default-apps settings");
+        Process.Start(new ProcessStartInfo("ms-settings:defaultapps") { UseShellExecute = true });
+        ShowNotice("In Windows Settings, search for \".md\" and pick MarkLite as the default app.",
+            actionLabel: null, action: null);
+    }
+
+    private void ShowNotice(string text, string? actionLabel, Action? action,
+        string? secondaryLabel = null, Action? secondaryAction = null)
+    {
+        this.FindControl<TextBlock>("NoticeText")!.Text = text;
+        var button = this.FindControl<Button>("NoticeActionButton")!;
+        button.Content = actionLabel;
+        button.IsVisible = actionLabel is not null;
+        var secondary = this.FindControl<Button>("NoticeSecondaryButton")!;
+        secondary.Content = secondaryLabel;
+        secondary.IsVisible = secondaryLabel is not null;
+        _noticeAction = action;
+        _noticeSecondaryAction = secondaryAction;
+        this.FindControl<Border>("NoticeBanner")!.IsVisible = true;
+    }
+
+    private void HideNotice()
+    {
+        this.FindControl<Border>("NoticeBanner")!.IsVisible = false;
+        _noticeAction = null;
+        _noticeSecondaryAction = null;
+    }
+
+    private void OnNoticeActionClicked(object? sender, RoutedEventArgs e)
+    {
+        _noticeAction?.Invoke();
+    }
+
+    private void OnNoticeSecondaryClicked(object? sender, RoutedEventArgs e)
+    {
+        _noticeSecondaryAction?.Invoke();
+    }
+
+    private void OnNoticeDismissClicked(object? sender, RoutedEventArgs e)
+    {
+        HideNotice();
+    }
+
+    #endregion
 
     private void MarkActivity()
     {

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Small-size variant (16/24/32 px .ico slots): the accent checkbox alone,
+       full bleed — plan lines and feather don't survive below 48 px. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#242B38"/>
+      <stop offset="1" stop-color="#141922"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
+  <rect x="42" y="42" width="172" height="172" rx="40" fill="#3B82F6"/>
+  <path d="M 88 128 L 118 160 L 168 96"
+        fill="none" stroke="#FFFFFF" stroke-width="28"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -1,6 +1,13 @@
 using System;
 using System.Diagnostics;
 using Avalonia;
+using Velopack;
+
+/*  MarkLite is Windows-only by design (win-x64 RID, Win32 rendering options,
+    registry-based association, Velopack Windows hooks). Declaring it here
+    keeps the platform-compatibility analyzer honest instead of per-call
+    suppressions. */
+[assembly: System.Runtime.Versioning.SupportedOSPlatform("windows")]
 
 namespace MarkLite;
 
@@ -16,6 +23,16 @@ internal static class Program
     public static void Main(string[] args)
     {
         StartupTimer.Start();
+
+        /*  Velopack owns install/update/uninstall lifecycle invocations: on
+            those special launches (Setup, updater, uninstaller) it runs its
+            hooks and exits before any UI code; on a normal launch it returns
+            immediately. Must come before everything else. The uninstall hook
+            removes the optional "Open with" registry keys so an uninstall
+            leaves nothing behind. */
+        VelopackApp.Build()
+            .OnBeforeUninstallFastCallback(_ => FileAssociation.UninstallCleanup())
+            .Run();
 
         /*  Single-instance: with a file argument, hand it to a running primary
             instance and exit instead of opening a second window. A primary

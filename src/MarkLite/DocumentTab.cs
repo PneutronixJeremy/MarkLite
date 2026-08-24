@@ -43,6 +43,9 @@ internal sealed class DocumentTab : IDisposable
     /// <summary>Set once the viewer's ScrollChanged has been hooked (needs an applied template).</summary>
     public bool ScrollHooked { get; set; }
 
+    /*  Headings for the sidebar: the viewer's own TableOfContents tree,
+        flattened back to document order, paired positionally with the rendered
+        heading controls (used for scroll position math). */
     public List<TocEntry> TocEntries { get; } = [];
     public List<Control> HeadingControls { get; } = [];
 

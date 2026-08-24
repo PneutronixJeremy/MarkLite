@@ -11,7 +11,11 @@ namespace MarkLite.Rendering;
       open document's directory → opened inside MarkLite;
     - other paths that exist on disk → shell-opened with their default handler;
     - #anchors → scroll to the matching heading in the open document;
-    - anything else → logged no-op rather than shell-executing arbitrary strings. */
+    - anything else → logged no-op rather than shell-executing arbitrary strings.
+
+    The anchor branch is a safety net, not the live path: the viewer resolves
+    fragment links against its own anchor table and never reports them, so a
+    clicked #anchor jumps without passing through here. */
 internal sealed class MarkLiteHyperlinkCommand : ICommand
 {
     private static readonly string[] MarkdownExtensions = [".md", ".markdown", ".txt"];

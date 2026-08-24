@@ -194,6 +194,11 @@ public partial class MainWindow : Window
             Pipeline = SharedPipeline,
             MaxWidth = 1100,
             Margin = new Thickness(28, 6, 28, 0),
+            /*  The sidebar shows every heading level, and the entries are
+                paired positionally with the rendered heading controls — a
+                shallower depth would drop deep headings from the list while
+                the controls remain, breaking that pairing. */
+            TableOfContentsMaxDepth = 6,
         };
         /*  Without this, wide content (long code lines, wide tables) is
             measured unbounded and overflows instead of wrapping/scrolling
@@ -608,7 +613,7 @@ public partial class MainWindow : Window
                     }
                 }, DispatcherPriority.Background);
             }
-            RebuildTocData(tab, text);
+            RebuildTocData(tab);
             if (tab == _activeTab)
             {
                 RefreshTocPanel();
@@ -900,11 +905,16 @@ public partial class MainWindow : Window
             _tocVisible && (_activeTab?.TocEntries.Count ?? 0) > 0;
     }
 
-    /// <summary>Parses headings and collects the rendered heading controls for one tab.</summary>
-    private static void RebuildTocData(DocumentTab tab, string markdownText)
+    /// <summary>Takes the viewer's heading tree and collects the rendered heading controls for one tab.</summary>
+    private static void RebuildTocData(DocumentTab tab)
     {
+        /*  The viewer builds its table of contents from the Markdig AST while
+            rendering, so it covers ATX and setext headings alike and its slugs
+            are the very ones its anchor table uses. It comes as a tree
+            (Children nested by level); the sidebar is a flat indented list, so
+            flatten it back to document order. */
         tab.TocEntries.Clear();
-        tab.TocEntries.AddRange(HeadingParser.Parse(markdownText));
+        FlattenToc(tab.Viewer.TableOfContents, tab.TocEntries);
 
         tab.HeadingControls.Clear();
         tab.HeadingControls.AddRange(tab.Viewer.GetVisualDescendants()
@@ -917,6 +927,19 @@ public partial class MainWindow : Window
             DebugLog.Write($"toc mismatch: parsed {tab.TocEntries.Count} headings, rendered {tab.HeadingControls.Count}");
         }
         DebugLog.Write($"toc built: {tab.TocEntries.Count} headings");
+    }
+
+    private static void FlattenToc(IReadOnlyList<TocEntry>? entries, List<TocEntry> flat)
+    {
+        if (entries is null)
+        {
+            return;
+        }
+        foreach (var entry in entries)
+        {
+            flat.Add(entry);
+            FlattenToc(entry.Children, flat);
+        }
     }
 
     /// <summary>Rebuilds the sidebar button list from the active tab's TOC data.</summary>
@@ -978,13 +1001,19 @@ public partial class MainWindow : Window
             return;
         }
         var index = tab.TocEntries.FindIndex(e => string.Equals(e.Slug, slug, StringComparison.OrdinalIgnoreCase));
-        if (index < 0)
+        if (index >= 0)
         {
-            DebugLog.Write($"anchor not found: #{slug}");
+            DebugLog.Write($"anchor link: #{slug}");
+            ScrollToHeading(index);
             return;
         }
-        DebugLog.Write($"anchor link: #{slug}");
-        ScrollToHeading(index);
+
+        /*  Not a heading slug — the viewer also registers anchors for other
+            elements (explicit ids, footnotes), so hand it over. Its scroll is
+            a BringIntoView jump, hence the fallback rather than first choice:
+            the heading path above lands at a known offset. */
+        DebugLog.Write($"anchor not a heading, deferring to viewer: #{slug}");
+        tab.Viewer.ScrollToAnchor(slug);
     }
 
     /// <summary>Highlights the TOC entry of the heading nearest above the viewport top.</summary>

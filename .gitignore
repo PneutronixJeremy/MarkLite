@@ -4,6 +4,9 @@ obj/
 publish/
 publish-stage/
 
+# Local planning documents — never committed (may contain machine/user specifics)
+plans/
+
 # User/IDE
 *.user
 .vs/

@@ -16,6 +16,16 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 
+    <!--  Symbols are not part of the deployment: they dwarf it (~250 MB of pdb
+          against a ~52 MB app). DebugType=none is the lever for the ILC native
+          pdb — setting NativeDebugSymbols here does nothing, because the
+          ilcompiler targets import after this and re-derive it from DebugType.
+          Release only, so Debug builds stay debuggable; the SkiaSharp and
+          HarfBuzz native pdbs arrive as publish items from their runtime
+          packages and are dropped by the target at the bottom of this file.  -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+
     <!-- Viewer app: favor small working set over GC throughput. -->
     <GCConserveMemory>9</GCConserveMemory>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
@@ -42,4 +52,11 @@
          TextMate satellite package, which costs ~19 MB of grammar assets in the exe. -->
     <PackageReference Include="ColorCode.Core" Version="2.0.15" />
   </ItemGroup>
+
+  <!-- Keep symbol files out of the published deployment (see NativeDebugSymbols above). -->
+  <Target Name="ExcludeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 </Project>

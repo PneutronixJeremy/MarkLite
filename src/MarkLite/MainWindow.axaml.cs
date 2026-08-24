@@ -45,7 +45,7 @@ public partial class MainWindow : Window
         new MarkdownPipelineBuilder().UseSupportedExtensions().UseMathematics().Build();
     private static readonly MarkLiteRenderExtension RenderExtension = new();
 
-    private readonly ContentControl _viewerHost;
+    private readonly Panel _viewerHost;
     private readonly TextBox _findBox;
 
     private IStorageFolder? _lastOpenFolder;
@@ -84,7 +84,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        _viewerHost = this.FindControl<ContentControl>("ViewerHost")!;
+        _viewerHost = this.FindControl<Panel>("ViewerHost")!;
         _findBox = this.FindControl<TextBox>("FindBox")!;
 
         _hyperlinkCommand = new MarkLiteHyperlinkCommand(
@@ -259,6 +259,11 @@ public partial class MainWindow : Window
     {
         var viewer = CreateViewer();
 
+        /*  Added to the host straight away and kept there for the tab's whole
+            life; ActivateTab only flips visibility (see the note there). */
+        viewer.IsVisible = false;
+        _viewerHost.Children.Add(viewer);
+
         /*  Registration order is load-bearing: UseMermaid front-inserts a
             renderer that broadly claims every fenced block, and MarkLite's
             extension must register after it so its own code renderer lands
@@ -371,6 +376,13 @@ public partial class MainWindow : Window
         }
     }
 
+    /*  Tab switching hides the outgoing viewer instead of removing it from the
+        host. Removing it would detach it from the logical tree, and the Mermaid
+        package registers a DetachedFromLogicalTree handler that cancels an
+        already-disposed CancellationTokenSource — so the second detach of any
+        viewer holding a mermaid diagram throws ObjectDisposedException and
+        aborts the switch halfway. Hidden-but-attached also keeps each viewer's
+        scroll offset alive, so switching needs no offset restore at all. */
     private void ActivateTab(DocumentTab tab)
     {
         if (_activeTab == tab)
@@ -382,13 +394,18 @@ public partial class MainWindow : Window
         {
             _activeTab.SavedScrollY = _activeTab.ScrollY;
             _activeTab.StripItem.Classes.Remove("TabItemActive");
+            _activeTab.Viewer.IsVisible = false;
             DebugLog.Write($"tab scroll saved {_activeTab.SavedScrollY:F1} for '{_activeTab.DisplayName}'");
+        }
+        if (_welcomeViewer is not null)
+        {
+            _welcomeViewer.IsVisible = false;
         }
 
         _activeTab = tab;
         MarkActivity();
         tab.StripItem.Classes.Add("TabItemActive");
-        _viewerHost.Content = tab.Viewer;
+        tab.Viewer.IsVisible = true;
         Title = $"MarkLite — {tab.DisplayName}";
         SetStaleBanner(tab.StaleMessage);
 
@@ -421,11 +438,12 @@ public partial class MainWindow : Window
         }
     }
 
-    /*  Re-attaching a viewer resets its ScrollViewer offset, so the offset
-        saved at deactivation is pushed back after the layout pass. Two passes:
-        at Loaded priority the reattached tree may not have its full extent yet
-        and the set gets clamped, so a second set runs at Background priority
-        after layout has fully settled. */
+    /*  Viewers stay attached across switches, so the offset normally survives
+        on its own; this pushes the saved value back anyway, because a viewer
+        that was hidden skipped layout and can report a stale extent on the
+        first pass. Two passes for that reason: the Loaded-priority set may be
+        clamped, the Background one runs after layout has settled. Both are
+        no-ops when the offset never moved. */
     private void RestoreActiveTabScroll()
     {
         var tab = _activeTab;
@@ -463,6 +481,7 @@ public partial class MainWindow : Window
 
         _tabs.RemoveAt(index);
         this.FindControl<StackPanel>("TabStrip")!.Children.Remove(tab.StripItem);
+        _viewerHost.Children.Remove(tab.Viewer);
         tab.Dispose();
         DebugLog.Write($"tab closed '{tab.DisplayName}' ({_tabs.Count} tabs)");
 
@@ -488,8 +507,9 @@ public partial class MainWindow : Window
         {
             _welcomeViewer = CreateViewer();
             _welcomeViewer.Markdown = WelcomeMarkdown;
+            _viewerHost.Children.Add(_welcomeViewer);
         }
-        _viewerHost.Content = _welcomeViewer;
+        _welcomeViewer.IsVisible = true;
         Title = "MarkLite";
         SetStaleBanner(null);
         RefreshTocPanel();

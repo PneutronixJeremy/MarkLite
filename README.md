@@ -1,4 +1,4 @@
-<img src="assets/MarkLite.svg" width="112" align="right" alt="MarkLite logo — accent checkbox, plan lines, and a quill feather">
+<img src="assets/MarkLite.svg" width="112" align="right" alt="MarkLite logo — an M beside a feather hanging tip-down like a down arrow">
 
 # MarkLite
 

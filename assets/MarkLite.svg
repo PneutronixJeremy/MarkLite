@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <!-- C2: checkbox + plan lines, third line replaced by a feather ("lite" as lightweight) -->
+  <!-- D1 final: dark slate tile, slim white M, wide blue feather hanging
+       tip-down as the "down arrow" -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#242B38"/>
@@ -7,15 +8,17 @@
     </linearGradient>
   </defs>
   <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
-  <rect x="40" y="76" width="104" height="104" rx="24" fill="#3B82F6"/>
-  <path d="M 68 128 L 92 152 L 118 108"
+  <!-- M, slimmed -->
+  <path d="M 44 180 L 44 76 L 88 130 L 132 76 L 132 180"
         fill="none" stroke="#FFFFFF" stroke-width="18"
         stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 168 100 L 218 100 M 168 128 L 218 128"
-        fill="none" stroke="#E7ECF3" stroke-width="16" stroke-linecap="round"/>
-  <!-- feather: filled quill with a center rib, sweeping up-right -->
-  <path d="M 164 184 C 168 156 190 136 226 128 C 222 158 200 180 168 186 Z"
-        fill="#8FC0FF"/>
-  <path d="M 168 182 C 182 170 202 152 220 134"
-        fill="none" stroke="#1B2230" stroke-width="6" stroke-linecap="round"/>
+  <!-- feather, widened: tip down like an arrow -->
+  <path d="M 196 60 C 230 94 232 138 198 170 C 166 140 162 96 196 60 Z"
+        fill="#5D9BFF"/>
+  <path d="M 197 74 L 197 168 M 197 170 L 196 198"
+        fill="none" stroke="#8FC0FF" stroke-width="8" stroke-linecap="round"/>
+  <!-- arrowhead hint at the quill tip -->
+  <path d="M 182 184 L 196 200 L 210 184"
+        fill="none" stroke="#8FC0FF" stroke-width="10"
+        stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

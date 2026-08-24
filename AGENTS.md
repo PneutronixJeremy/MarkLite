@@ -22,3 +22,7 @@
 
 - Author/committer email for this repo is the GitHub noreply address
   (set in local git config) — do not change it back to a personal address.
+- Commit subjects: the whole repo is MarkLite, so drop the `MarkLite > `
+  prefix — breadcrumbs start at the area (e.g. `Distribution > 11: …`,
+  `Docs > …`), still in the user's `Area > Subarea > Description. [w/ Claude]`
+  format (user decision 2026-08-24).

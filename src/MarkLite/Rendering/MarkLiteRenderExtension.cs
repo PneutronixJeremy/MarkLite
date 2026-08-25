@@ -50,6 +50,12 @@ internal sealed class MarkLiteRenderExtension : IMarkViewExtension
             renderer.ObjectRenderers.Remove(stock);
         }
         renderer.ObjectRenderers.Insert(0, new MarkLiteCodeBlockRenderer());
+
+        /*  Comments become visible (see HtmlCommentRenderer.cs); all other raw
+            HTML keeps the stock behavior of rendering nothing. */
+        renderer.ReplaceOrAdd<HtmlBlockRenderer>(new HtmlCommentBlockRenderer());
+        renderer.ReplaceOrAdd<MarkView.Avalonia.Rendering.Inlines.HtmlInlineRenderer>(
+            new HtmlCommentInlineRenderer());
     }
 }
 

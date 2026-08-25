@@ -76,6 +76,8 @@
                     <MenuItem Header="_Segoe UI" Click="OnBodyFontClicked" ToggleType="Radio"
                               Tag="Segoe UI Variable Text, Segoe UI, sans-serif" />
                 </MenuItem>
+                <MenuItem Name="ShowHtmlCommentsItem" Header="Show _HTML comments"
+                          Click="OnShowHtmlCommentsClicked" ToggleType="CheckBox" IsChecked="True" />
             </MenuItem>
             <MenuItem Header="_Options">
                 <MenuItem Name="RegisterOpenWithItem"

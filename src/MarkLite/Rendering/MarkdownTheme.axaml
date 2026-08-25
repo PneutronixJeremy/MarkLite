@@ -1,4 +1,4 @@
-<Styles xmlns="https://github.com/avaloniaui"
+﻿<Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mv="using:MarkView.Avalonia"
         xmlns:mri="using:MarkView.Avalonia.Rendering.Inlines">
@@ -66,6 +66,23 @@
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource MdInlineCodeForeground}" />
         <Setter Property="Background" Value="{DynamicResource MdInlineCodeBackground}" />
+    </Style>
+
+    <!--  Markdown comments, shown by HtmlCommentRenderer under View > Show HTML
+          comments. Monospace and muted: they are markup the author wrote, not
+          prose, and must never be mistaken for document text. Same font size as
+          the body so a comment between two paragraphs does not jolt the flow. -->
+    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-html-comment">
+        <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
+        <Setter Property="Opacity" Value="0.75" />
+        <Setter Property="Margin" Value="0,8,0,0" />
+    </Style>
+    <Style Selector="mv|MarkdownViewer Run.markdown-html-comment">
+        <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
     </Style>
 
     <!-- Fenced code blocks (structure built by MarkLiteCodeBlockRenderer) -->

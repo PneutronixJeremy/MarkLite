@@ -154,6 +154,15 @@ public partial class MainWindow : Window
             RerenderAllTabs();
         };
 
+        /*  Comment visibility is read before the first render so the very first
+            document already reflects the saved choice; unset means on. */
+        if (UserSettings.ShowHtmlComments is { } showComments)
+        {
+            HtmlComments.Visible = showComments;
+            this.FindControl<MenuItem>("ShowHtmlCommentsItem")!.IsChecked = showComments;
+            DebugLog.Write($"html comments restored: {(showComments ? "shown" : "hidden")}");
+        }
+
         /*  Body font: the saved choice first, then the MARKLITE_BODYFONT
             debug/testing env hook on top (scripted font checks can't click
             menus). Both run before the first render. */
@@ -182,12 +191,17 @@ public partial class MainWindow : Window
         /*  Only the primary instance holds the pipe; StartServer no-ops in a
             standalone secondary. Activate() nudges the window forward when a
             handoff arrives (Windows may only flash the taskbar button). */
-        SingleInstance.StartServer(path =>
-        {
-            DebugLog.Write($"handoff received: {path}");
-            OpenFile(path);
-            Activate();
-        });
+        SingleInstance.StartServer(
+            path =>
+            {
+                DebugLog.Write($"handoff received: {path}");
+                OpenFile(path);
+                Activate();
+            },
+            /*  Debug commands arrive on the same pipe (see DebugCommands.cs).
+                No Activate() here on purpose: scripted checks must not pull
+                focus away from whatever the user is doing. */
+            ExecuteDebugCommand);
 
         this.FindControl<MenuItem>("RegisterOpenWithItem")!.IsChecked = FileAssociation.IsRegistered;
 
@@ -376,6 +390,25 @@ public partial class MainWindow : Window
         return viewer;
     }
 
+    /// <summary>View > Show HTML comments. Comments are rendered dimmed; other raw HTML stays dropped.</summary>
+    private void OnShowHtmlCommentsClicked(object? sender, RoutedEventArgs e)
+    {
+        SetHtmlCommentsVisible(!HtmlComments.Visible);
+    }
+
+    private void SetHtmlCommentsVisible(bool visible)
+    {
+        HtmlComments.Visible = visible;
+        UserSettings.ShowHtmlComments = visible;
+        this.FindControl<MenuItem>("ShowHtmlCommentsItem")!.IsChecked = visible;
+        DebugLog.Write($"html comments: {(visible ? "shown" : "hidden")}");
+
+        /*  Visibility is decided while the control tree is built, so the change
+            only shows after a re-render — the same reason a font or theme
+            change re-renders. */
+        RerenderAllTabs();
+    }
+
     /// <summary>View > Body font. Swaps the app-level font token and re-renders.</summary>
     private void OnBodyFontClicked(object? sender, RoutedEventArgs e)
     {
@@ -425,6 +458,7 @@ public partial class MainWindow : Window
         }
         if (_welcomeViewer is not null)
         {
+            _welcomeViewer.Markdown = null;
             _welcomeViewer.Markdown = WelcomeMarkdown;
         }
     }
@@ -826,6 +860,11 @@ public partial class MainWindow : Window
         MarkActivity();
         tab.Search.Detach();
         tab.PendingText = null;
+        /*  Markdown is a styled property: assigning the value it already holds
+            raises no change and rebuilds nothing. A re-render with UNCHANGED
+            text is exactly what a theme, font or comment-visibility switch
+            asks for, so clear it first to force the rebuild. */
+        tab.Viewer.Markdown = null;
         tab.Viewer.Markdown = text;
         Dispatcher.UIThread.Post(() =>
         {
@@ -1070,14 +1109,20 @@ public partial class MainWindow : Window
         }
         MarkActivity();
 
-        /*  A pending debounce means the shown highlights don't reflect the
+        /*  A pending debounce means the shown highlights may not reflect the
             typed term yet — flush it instead of stepping stale matches; the
-            fresh Apply already lands on its first match. */
+            fresh Apply already lands on its first match. When the term in the
+            box is the one already applied, the pending tick has nothing to
+            change, so drop it and step normally: re-running the search there
+            would silently reset the current match back to the first. */
         if (_findDebounce.IsEnabled)
         {
             _findDebounce.Stop();
-            RunSearch(scrollToCurrent: true);
-            return;
+            if (!string.Equals(_activeTab.SearchTerm, _findBox.Text ?? string.Empty, StringComparison.Ordinal))
+            {
+                RunSearch(scrollToCurrent: true);
+                return;
+            }
         }
 
         if (_activeTab.Search.Count == 0)

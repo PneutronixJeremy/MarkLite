@@ -104,6 +104,14 @@ path + Windows SDK import libs staged from the `Microsoft.Windows.SDK.CPP.x64`
 NuGet package). On a machine with the "Desktop development with C++" workload
 installed, a stock `dotnet publish -c Release -r win-x64` works instead.
 
+Contributors: activate the repo's hooks once per clone — the pre-commit hook
+runs `tools/scrub-check.ps1` so no local path, account name or token reaches a
+commit:
+
+```powershell
+git config core.hooksPath .githooks
+```
+
 ## Usage
 
 ```powershell
@@ -127,6 +135,8 @@ The version comes from `<Version>` in `src/MarkLite/MarkLite.csproj` — bump it
 there, pack, release. Installed copies pick the new version up automatically:
 checked in the background after startup (or Help > Check for updates),
 downloaded silently, applied on the next restart.
+
+Full procedure, prerequisites and artifact list: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Deployment (manual)
 

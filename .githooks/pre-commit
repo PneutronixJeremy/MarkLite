@@ -1,0 +1,5 @@
+#!/bin/sh
+#  MarkLite pre-commit hook: refuse commits whose staged content carries
+#  machine- or user-identifying data. Activate once per clone with
+#  "git config core.hooksPath .githooks".
+exec pwsh -NoProfile -File tools/scrub-check.ps1 -Staged

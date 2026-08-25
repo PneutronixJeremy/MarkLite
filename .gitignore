@@ -5,11 +5,10 @@ publish/
 publish-stage/
 releases/
 
-# Local planning material stays untracked (reference screenshots, backups) —
-# EXCEPT the main plan document, which is committed in scrubbed form
+# Local planning material stays untracked (reference screenshots, backups).
+# Every plans/*.md is committed and must pass tools/scrub-check.ps1
 # (see AGENTS.md for the scrub rules).
-plans/*
-!plans/marklite-native-markdown-viewer.md
+plans/reference/
 
 # User/IDE
 .claude/settings.local.json

@@ -1767,18 +1767,18 @@ published exe, so it is reproducible from the repo.
   which exists to scan that directory. **PASS**
 
 ## Phase 8: Release v1.1.0
-Status: Not started
+Status: Complete
 
-- [ ] `<Version>1.1.0</Version>` in `src/MarkLite/MarkLite.csproj`.
-- [ ] Release notes draft (for the GitHub release body): virtualized
+- [x] `<Version>1.1.0</Version>` in `src/MarkLite/MarkLite.csproj`.
+- [x] Release notes draft (for the GitHub release body): virtualized
   rendering, one live document per window, markdown-source copy, Mermaid
   crash fix, memory table before/after.
-- [ ] `build/pack.ps1` with the previous release's files present in
+- [x] `build/pack.ps1` with the previous release's files present in
   `releases/` so a delta package is produced; verify Setup.exe, full and
   delta nupkg, portable zip exist and the delta is a fraction of the full.
-- [ ] Portable zip smoke run via `tools/verify/run-all.ps1 -Exe <unzipped
+- [x] Portable zip smoke run via `tools/verify/run-all.ps1 -Exe <unzipped
   exe>` → all PASS.
-- [ ] Hand-off to the user: commit message, then the user runs `git push`
+- [x] Hand-off to the user: commit message, then the user runs `git push`
   and `build/release.ps1` (tags and uploads — agent never does either).
   After the user's release: installed v1.0.1 copy with `MARKLITE_DEBUG=1`
   logs the update check finding 1.1.0 and applies the delta.
@@ -1793,10 +1793,205 @@ Status: Not started
   shows 1.1.0 found and applied.
 
 ### Phase Summary
-_(write when phase completes)_
+Version bumped to 1.1.0 and packed. `releases/` still held the 1.0.0 and 1.0.1
+files, so vpk built a delta straight against 1.0.1 — installed copies take an
+8.6 MB download rather than a 24 MB one.
+
+The **release notes draft** for the GitHub release body (the agent never runs
+`release.ps1`, so this is text for the user to paste):
+
+  MarkLite 1.1.0 — virtualized rendering
+
+  Memory no longer tracks the size of your documents or how many you have open.
+
+  **Virtualized rendering.** The document is parsed once, and only the blocks near
+  the viewport are built as controls. A 528 KB Markdown file now opens in 105 ms
+  and settles at 86 MB, against 784 ms and 303 MB in 1.0.1 — and scrolling it end
+  to end does not grow that number. The contents sidebar, find-in-document,
+  `#anchor` links and copy all work over the whole document regardless of what is
+  currently on screen.
+
+  **One live document per window.** Only the active tab holds a rendered control
+  tree; the rest keep their text and where you were reading. Three heavy documents
+  open at once cost 78 MB — less than one of them did before.
+
+  | | 1.0.1 | 1.1.0 |
+  |---|---:|---:|
+  | `sample.md` (1.6 KB) | 75.9 MB | 72.3 MB |
+  | `sample-plan.md` (3.5 KB) | 80.1 MB | 67.8 MB |
+  | `stress-large.md` (528 KB) | 303.0 MB | 85.9 MB |
+  | all three open as tabs | 301.3 MB | 78.1 MB |
+  | first render, 528 KB | 784 ms | 105 ms |
+
+  Published AOT build, fixed 1400x1000 window, working set after the idle trim.
+
+  **Selection copies Markdown.** Select anything and Ctrl+C gives back the
+  Markdown source it covers, not the rendered text; Ctrl+A copies the whole file.
+  Selections are addressed by block and character, so they can span parts of the
+  document that were never rendered.
+
+  **Line numbers.** View > Show line numbers draws a source-line gutter — every
+  line inside a fenced code block, and the starting line of everything else.
+
+  **HTML comments are visible.** `<!-- … -->` renders dimmed instead of being
+  silently dropped (View > Show HTML comments, on by default). Other raw HTML is
+  still not rendered.
+
+  **Fixed: crash on Mermaid diagrams.** The packaged Mermaid renderer registered a
+  new detach handler on every attach and cancelled an already-disposed
+  `CancellationTokenSource`, which crashed the second time a diagram left the
+  visual tree — reliably reproducible under tab switching. MarkLite now carries a
+  fixed copy (MIT, credited in THIRD-PARTY-NOTICES.md).
+
+  Also: footnotes render, scroll position survives a live reload of an edited
+  file by content rather than by pixel offset, and search reports the document's
+  match count rather than the rendered subset's.
+
+  Install: `MarkLite-win-Setup.exe` (per-user, no admin). Installed 1.0.x copies
+  update themselves in the background. Portable users take
+  `MarkLite-win-Portable.zip`.
+
+One correction landed alongside the release: the `docs/` screenshots taken in
+Phase 7 came out in **Lexend**, because the verify harness launches the real app
+and this machine has `HKCU\Software\MarkLite\BodyFontFamily` set to it. The
+shipped default is Roboto (`App.axaml`). All five were re-captured with the
+default and the machine's own setting put back afterwards. Worth remembering for
+any future screenshot pass: the harness inherits the user's persisted View menu
+settings, so a screenshot shows their preferences unless those are pinned first.
+
+### Verification Plan results
+- `build/pack.ps1` exit 0. `releases/` contains
+  `MarkLite-1.1.0-full.nupkg` (24.2 MB), `MarkLite-1.1.0-delta.nupkg` (8.6 MB),
+  `MarkLite-win-Setup.exe` (28.5 MB), `MarkLite-win-Portable.zip` (24.2 MB) and
+  `RELEASES`. Delta is **35.7 % of full**, against a < 40 % budget. **PASS**
+  (vpk logged `Delta processed 0006 files. 0003 patched, 0003 unchanged`.)
+- `run-all.ps1 -Exe <unzipped portable>/current/MarkLite.exe` → **ALL PASS
+  (7 scripts)**. The packed build behaves exactly as the publish tree does.
+  **PASS**
+- `tools/scrub-check.ps1` on the final tree → clean, exit 0. **PASS**
+- Post-release (user-run, to be recorded here): an installed v1.0.1 copy with
+  `MARKLITE_DEBUG=1` logs the update check finding 1.1.0 and applying the delta.
+  **PENDING** — needs the release to be live.
 
 ## Final Recap
-_(write when all phases complete: summary of the entire piece of work)_
+
+MarkLite's working set no longer tracks document size or tab count. The two
+"future work" items the original build plan left behind — one live viewer per
+window, virtualized rendering — are both done, and shipped as v1.1.0.
+
+**What was built.** MarkLite now parses a document into a model of its own
+(`Rendering/Virtual/MarkdownDocumentModel`: top-level blocks with source spans
+and a hash each, headings with MarkView's own slugs, an anchor table, the TOC
+tree) and renders it through `VirtualBlockPanel`, which realizes only the blocks
+within a viewport of the visible range. `BlockRealizer` drives MarkView's public
+`AvaloniaRenderer` one block at a time, so MarkView stays an unmodified NuGet
+dependency — nothing was forked except its Mermaid block renderer, which crashed
+on the second detach and had to be. Everything that used to read the rendered
+tree was moved onto the model: the contents sidebar, anchor resolution, search
+(count from the model, highlight on realized blocks only), and selection, which
+is addressed by block plus character offset and copies the **Markdown source**
+between its endpoints.
+
+**The numbers**, published AOT build, fixed 1400x1000 window, working set after
+the idle trim:
+
+| Fixture(s) | 1.0.1 | 1.1.0 |
+|---|---:|---:|
+| sample.md (1.6 KB) | 75.9 MB | 72.3 MB |
+| sample-plan.md (3.5 KB) | 80.1 MB | 67.8 MB |
+| stress-large.md (528 KB) | 303.0 MB | 85.9 MB |
+| all three as tabs, cycled twice | 301.3 MB | 78.1 MB |
+| first render, 528 KB | 784 ms | 105 ms |
+
+Per-KB slope is **0.026 MB/KB** against a 0.2 budget; the < 100 MB worst-case
+target holds, and the ~73 MB floor is Avalonia plus the framebuffer, not the
+document. The only stated target missed is "sample.md ≤ 70 MB" at 72.3 — a
+measurement-method gap recorded back in Phase 1, and still 3.6 MB better than
+the renderer it replaced.
+
+**Features added along the way**, both at the user's request mid-plan: visible
+HTML comments (Phase 1A) and a source-line gutter (Phase 4A). Footnotes were
+turned on in Phase 4; generic `{#id}` attributes were deliberately not, because
+the Markdig extension claims any trailing `{...}` and silently eats heading
+text.
+
+**What the work cost in surprises**, the ones that would be expensive to
+rediscover:
+
+- Assigning `Markdown`, `Pipeline`, `BaseUri` or `Source` on a `MarkdownViewer`
+  subclass runs the base render path and replaces `Content` — silently throwing
+  the virtualizing panel away. `Markdown` now throws instead; the others are
+  simply never used. `UseMath()` is one of these in disguise: it reassigns
+  `Pipeline`.
+- Avalonia style selectors are exact-type unless wrapped in `:is(...)`. All 30
+  of MarkLite's theme selectors had to be retargeted before a subclass picked
+  them up.
+- A scroll correction cannot be written from inside the layout pass that
+  computed it: the ScrollViewer re-clamps `Offset` against the extent it works
+  out afterwards. It has to be posted, and across a width change the anchor
+  block must be *held* over several passes rather than corrected once.
+- Markdig gathers footnote and link-reference definitions into a synthetic group
+  block whose span covers the whole file. Taken at face value its hash changed
+  on every edit anywhere, which collapsed the reload alignment's whole suffix
+  and lost the reader's place.
+- Detached controls keep their parents alive. Leaving a list of heading
+  `TextBlock`s populated after dropping a tab's tree pinned most of the document
+  that had just been discarded.
+
+**The classic renderer is gone.** Phase 7 removed it outright after the user
+re-opened the question (2026-08-25): it had not been a real fallback since
+Phase 4A, since selection, markdown copy and the gutter were never built for it.
+The fallback is the shipped v1.0.1 build and Velopack's previous-version
+rollback.
+
+**Test surface.** `tools/verify/` holds seven scripted checks plus
+`measure-memory.ps1` and `run-all.ps1`, all driving the published AOT exe over
+the debug command channel with no injected input, and all green against both the
+publish tree and the packed portable build. `dotnet test` covers the model
+(53 tests, no Avalonia). `tools/scrub-check.ps1` runs as a pre-commit hook.
 
 ## Deployment Plan
-_(write when all phases complete: step-by-step deployment instructions)_
+
+v1.1.0 is packed in `releases/` and verified. What remains is the user's to run
+— the agent never pushes, tags or uploads.
+
+1. **Push the branch.**
+
+   ```powershell
+   git push
+   ```
+
+   Both release commits (Phase 7 cutover, Phase 8 version bump) go up. The
+   working tree must be clean and `main` must be what the tag will point at.
+
+2. **Upload and tag.**
+
+   ```powershell
+   .uildelease.ps1
+   ```
+
+   It reads `<Version>` from the csproj, uploads `Setup.exe`, both nupkgs, the
+   portable zip and `RELEASES` from `releases/`, and creates the `v1.1.0` tag.
+   Needs `PneutronixJeremy_Github_Token` (or `GITHUB_TOKEN`) in the environment.
+   Add `-Draft` to review the release on github.com before it goes live.
+
+   Do **not** re-run `pack.ps1` first: the packed artifacts are the ones the
+   verification above passed against, and a repack would produce new hashes.
+
+3. **Paste the release notes** into the GitHub release body — the draft is in
+   this plan's Phase 8 summary. `release.ps1` does not set a body itself.
+
+4. **Confirm the update path works.** Run an already-installed v1.0.1 copy with
+   `MARKLITE_DEBUG=1` and watch stderr: the update lines should report 1.1.0
+   found on GitHub and a **delta** applied (8.6 MB, not the 24 MB full package).
+   The check runs ~3 s after launch, or on demand via Help > Check for updates;
+   it applies on the next restart. Portable copies never auto-update by design.
+
+5. **Delete this plan file.** It is finished work, and every phase's outcome
+   that outlives it already lives elsewhere: the release procedure in
+   `docs/RELEASING.md`, the verification scripts and their contract in
+   `tools/verify/README.md`, the memory numbers in `README.md`, and the design
+   decisions in the code comments. Nothing in `src/`, `tools/` or `docs/`
+   references it.
+
+   No future work is carried forward from this plan.

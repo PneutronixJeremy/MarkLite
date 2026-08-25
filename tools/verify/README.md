@@ -41,6 +41,13 @@ Ground rules:
   toggle on, gone with it off, and a raw `<img>` tag findable in neither.
   Captures both states and checks the setting survives a restart, then leaves
   it back on.
+- **`test-virtual.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** — the
+  virtualizing viewer (sets `MARKLITE_VIRTUAL=1` for the app it launches):
+  only a small fraction of the document is realized at any moment, the scroll
+  extent still covers the whole document, jumps and `scroll-end` realize their
+  target, the contents sidebar is complete from the parsed model, the working
+  set stays under 100 MB after scrolling a 500 KB document end to end, and a
+  window resize keeps the reader near the block they were on.
 - **`test-toc-search.ps1 [-Exe path] [-File doc.md] [-Term word]`** — contents
   sidebar (`toc <n>` scrolls and becomes the current section, `anchor <slug>`
   resolves) and find-in-document (match count equals a source count, `find-next`

@@ -102,6 +102,16 @@ internal sealed class DocumentSearch
         /*  Materialize the block list before mutating: highlighting replaces
             inline collections, which changes the tree that
             GetVisualDescendants is lazily walking. */
+        if (_viewer is Rendering.Virtual.VirtualMarkdownView)
+        {
+            /*  Known gap while both renderers exist: this search walks the
+                rendered control tree, and the virtualizing viewer only renders
+                what is near the viewport, so the count below covers realized
+                blocks rather than the document. Logged rather than hidden;
+                model-backed search replaces this path. */
+            DebugLog.Write("search: realized blocks only (virtual viewer)");
+        }
+
         var blocks = _viewer.GetVisualDescendants().OfType<TextBlock>()
             .Where(static block => !block.Classes.Any(static name => SkippedClasses.Contains(name)))
             .ToList();

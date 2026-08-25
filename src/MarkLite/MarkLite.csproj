@@ -40,6 +40,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The app is an exe with no public API of its own; the unit tests reach
+         its internals rather than forcing types public for testing's sake. -->
+    <InternalsVisibleTo Include="MarkLite.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Bundled fonts: Fira Code Retina (OFL) for code, Roboto (Apache-2.0) and
          Lexend (OFL) as selectable body faces — no system-install dependency. -->
     <AvaloniaResource Include="Assets\Fonts\*.ttf" />

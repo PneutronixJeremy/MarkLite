@@ -1,4 +1,4 @@
-﻿<Styles xmlns="https://github.com/avaloniaui"
+<Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mv="using:MarkView.Avalonia"
         xmlns:mri="using:MarkView.Avalonia.Rendering.Inlines">
@@ -12,48 +12,48 @@
           MarkdownSelectableTextBlock (own style key), which a bare TextBlock
           selector does NOT match — fonts silently stayed on the system default
           until this was found (2026-08-24). -->
-    <Style Selector="mv|MarkdownViewer :is(TextBlock)">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock)">
         <Setter Property="FontFamily" Value="{DynamicResource MdBodyFontFamily}" />
         <Setter Property="FontSize" Value="14.5" />
         <Setter Property="Foreground" Value="{DynamicResource MdBodyForeground}" />
     </Style>
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-paragraph">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-paragraph">
         <Setter Property="Margin" Value="0,8,0,0" />
         <Setter Property="LineHeight" Value="22" />
     </Style>
 
     <!-- Headings -->
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-h1">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-h1">
         <Setter Property="Margin" Value="0,14,0,4" />
         <Setter Property="Foreground" Value="{DynamicResource MdHeadingForeground}" />
         <Setter Property="FontSize" Value="30" />
         <Setter Property="FontWeight" Value="Bold" />
     </Style>
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-h2">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-h2">
         <Setter Property="Margin" Value="0,16,0,3" />
         <Setter Property="Foreground" Value="{DynamicResource MdHeadingForeground}" />
         <Setter Property="FontSize" Value="23" />
         <Setter Property="FontWeight" Value="Bold" />
     </Style>
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-h3">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-h3">
         <Setter Property="Margin" Value="0,13,0,2" />
         <Setter Property="Foreground" Value="{DynamicResource MdHeadingForeground}" />
         <Setter Property="FontSize" Value="18.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-h4">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-h4">
         <Setter Property="Margin" Value="0,10,0,2" />
         <Setter Property="Foreground" Value="{DynamicResource MdHeadingForeground}" />
         <Setter Property="FontSize" Value="15.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-h5">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-h5">
         <Setter Property="Margin" Value="0,8,0,2" />
         <Setter Property="Foreground" Value="{DynamicResource MdHeadingForeground}" />
         <Setter Property="FontSize" Value="14.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-h6">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-h6">
         <Setter Property="Margin" Value="0,8,0,2" />
         <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
         <Setter Property="FontSize" Value="13.5" />
@@ -61,7 +61,7 @@
     </Style>
 
     <!-- Inline code chip -->
-    <Style Selector="mv|MarkdownViewer Run.markdown-code-inline">
+    <Style Selector=":is(mv|MarkdownViewer) Run.markdown-code-inline">
         <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource MdInlineCodeForeground}" />
@@ -72,21 +72,21 @@
           comments. Monospace and muted: they are markup the author wrote, not
           prose, and must never be mistaken for document text. Same font size as
           the body so a comment between two paragraphs does not jolt the flow. -->
-    <Style Selector="mv|MarkdownViewer :is(TextBlock).markdown-html-comment">
+    <Style Selector=":is(mv|MarkdownViewer) :is(TextBlock).markdown-html-comment">
         <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
         <Setter Property="Opacity" Value="0.75" />
         <Setter Property="Margin" Value="0,8,0,0" />
     </Style>
-    <Style Selector="mv|MarkdownViewer Run.markdown-html-comment">
+    <Style Selector=":is(mv|MarkdownViewer) Run.markdown-html-comment">
         <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
     </Style>
 
     <!-- Fenced code blocks (structure built by MarkLiteCodeBlockRenderer) -->
-    <Style Selector="mv|MarkdownViewer Border.markdown-code-block">
+    <Style Selector=":is(mv|MarkdownViewer) Border.markdown-code-block">
         <Setter Property="Background" Value="{DynamicResource MdCodeBlockBackground}" />
         <Setter Property="CornerRadius" Value="6" />
         <Setter Property="Padding" Value="14,8,14,10" />
@@ -94,13 +94,13 @@
     </Style>
     <!--  :is(TextBlock): the code text lives in a SelectableTextBlock, which a
           bare TextBlock selector does not match (same trap as the body style). -->
-    <Style Selector="mv|MarkdownViewer Border.markdown-code-block :is(TextBlock)">
+    <Style Selector=":is(mv|MarkdownViewer) Border.markdown-code-block :is(TextBlock)">
         <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="LineHeight" Value="20" />
         <Setter Property="Foreground" Value="{DynamicResource MdCodeForeground}" />
     </Style>
-    <Style Selector="mv|MarkdownViewer TextBlock.CodeLangLabel">
+    <Style Selector=":is(mv|MarkdownViewer) TextBlock.CodeLangLabel">
         <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
@@ -109,30 +109,30 @@
     </Style>
 
     <!-- Blockquote -->
-    <Style Selector="mv|MarkdownViewer Border.markdown-blockquote">
+    <Style Selector=":is(mv|MarkdownViewer) Border.markdown-blockquote">
         <Setter Property="BorderBrush" Value="{DynamicResource MdBlockquoteRule}" />
         <Setter Property="BorderThickness" Value="4,0,0,0" />
         <Setter Property="Margin" Value="0,8,0,0" />
         <Setter Property="Padding" Value="14,2" />
         <Setter Property="Opacity" Value="1" />
     </Style>
-    <Style Selector="mv|MarkdownViewer Border.markdown-blockquote TextBlock">
+    <Style Selector=":is(mv|MarkdownViewer) Border.markdown-blockquote TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
     </Style>
 
     <!-- Lists -->
-    <Style Selector="mv|MarkdownViewer StackPanel.markdown-list">
+    <Style Selector=":is(mv|MarkdownViewer) StackPanel.markdown-list">
         <Setter Property="Margin" Value="26,8,0,0" />
     </Style>
-    <Style Selector="mv|MarkdownViewer StackPanel.markdown-list StackPanel.markdown-list">
+    <Style Selector=":is(mv|MarkdownViewer) StackPanel.markdown-list StackPanel.markdown-list">
         <Setter Property="Margin" Value="26,2,0,0" />
     </Style>
     <!--  Inside list items the item grid provides the rhythm; the paragraph's
           own top margin would push the text below its marker. -->
-    <Style Selector="mv|MarkdownViewer StackPanel.markdown-list :is(TextBlock).markdown-paragraph">
+    <Style Selector=":is(mv|MarkdownViewer) StackPanel.markdown-list :is(TextBlock).markdown-paragraph">
         <Setter Property="Margin" Value="0" />
     </Style>
-    <Style Selector="mv|MarkdownViewer TextBlock.markdown-list-marker">
+    <Style Selector=":is(mv|MarkdownViewer) TextBlock.markdown-list-marker">
         <Setter Property="Foreground" Value="{DynamicResource MdMutedForeground}" />
         <Setter Property="Margin" Value="0,0,8,0" />
         <!-- Match the paragraph's line height so markers sit on the first line's baseline. -->
@@ -140,48 +140,48 @@
     </Style>
 
     <!-- Task-list checkboxes (structure built by ProminentTaskListExtension) -->
-    <Style Selector="mv|MarkdownViewer Border.TaskBox">
+    <Style Selector=":is(mv|MarkdownViewer) Border.TaskBox">
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Margin" Value="0,2,8,0" />
     </Style>
-    <Style Selector="mv|MarkdownViewer Border.TaskBoxChecked">
+    <Style Selector=":is(mv|MarkdownViewer) Border.TaskBoxChecked">
         <Setter Property="Background" Value="{DynamicResource MdAccent}" />
     </Style>
-    <Style Selector="mv|MarkdownViewer Border.TaskBoxUnchecked">
+    <Style Selector=":is(mv|MarkdownViewer) Border.TaskBoxUnchecked">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="{DynamicResource MdTaskUncheckedBorder}" />
         <Setter Property="BorderThickness" Value="2" />
     </Style>
-    <Style Selector="mv|MarkdownViewer TextBlock.TaskCheckGlyph">
+    <Style Selector=":is(mv|MarkdownViewer) TextBlock.TaskCheckGlyph">
         <Setter Property="Foreground" Value="White" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="Bold" />
     </Style>
 
     <!-- Tables -->
-    <Style Selector="mv|MarkdownViewer Grid.markdown-table">
+    <Style Selector=":is(mv|MarkdownViewer) Grid.markdown-table">
         <Setter Property="Margin" Value="0,8,0,0" />
     </Style>
-    <Style Selector="mv|MarkdownViewer Border.markdown-table-cell">
+    <Style Selector=":is(mv|MarkdownViewer) Border.markdown-table-cell">
         <Setter Property="BorderBrush" Value="{DynamicResource MdTableBorder}" />
         <Setter Property="BorderThickness" Value="0,0,1,1" />
         <Setter Property="Padding" Value="11,6" />
     </Style>
-    <Style Selector="mv|MarkdownViewer Border.markdown-table-header">
+    <Style Selector=":is(mv|MarkdownViewer) Border.markdown-table-header">
         <Setter Property="Background" Value="{DynamicResource MdTableHeaderBackground}" />
     </Style>
-    <Style Selector="mv|MarkdownViewer Border.markdown-table-header TextBlock">
+    <Style Selector=":is(mv|MarkdownViewer) Border.markdown-table-header TextBlock">
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <!-- Links -->
-    <Style Selector="mv|MarkdownViewer mri|MarkdownHyperlink.markdown-link">
+    <Style Selector=":is(mv|MarkdownViewer) mri|MarkdownHyperlink.markdown-link">
         <Setter Property="Foreground" Value="{DynamicResource MdLinkForeground}" />
         <Setter Property="TextDecorations" Value="Underline" />
     </Style>
 
     <!-- Horizontal rules -->
-    <Style Selector="mv|MarkdownViewer Separator.markdown-thematic-break">
+    <Style Selector=":is(mv|MarkdownViewer) Separator.markdown-thematic-break">
         <Setter Property="Margin" Value="0,6" />
         <Setter Property="Background" Value="{DynamicResource MdTableBorder}" />
     </Style>

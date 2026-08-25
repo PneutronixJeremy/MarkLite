@@ -260,7 +260,31 @@ public partial class MainWindow
                 .Append(",\"stale\":").Append(tab.StaleMessage is null ? "false" : "true")
                 .Append('}');
         }
-        builder.Append("],\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))
+        builder.Append(']');
+
+        /*  Virtualization counters: what a check needs to tell "only the
+            viewport is realized" from "the whole document happens to fit".
+            Zeroed on the classic renderer, which realizes everything. */
+        if (_activeTab?.Viewer is Rendering.Virtual.VirtualMarkdownView virtualView)
+        {
+            var panel = virtualView.Panel;
+            var (firstRealized, lastRealized) = panel.RealizedRange;
+            builder.Append(",\"virtual\":true")
+                .Append(",\"blocks\":").Append(panel.BlockCount)
+                .Append(",\"realizedBlocks\":").Append(panel.RealizedBlockCount)
+                .Append(",\"measuredBlocks\":").Append(panel.MeasuredBlockCount)
+                .Append(",\"firstRealized\":").Append(firstRealized)
+                .Append(",\"lastRealized\":").Append(lastRealized)
+                .Append(",\"firstVisibleBlock\":").Append(panel.FirstVisibleBlock);
+        }
+        else
+        {
+            builder.Append(",\"virtual\":false,\"blocks\":0,\"realizedBlocks\":0")
+                .Append(",\"measuredBlocks\":0,\"firstRealized\":-1,\"lastRealized\":-1")
+                .Append(",\"firstVisibleBlock\":-1");
+        }
+
+        builder.Append(",\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))
             .Append(",\"tocCount\":").Append(_activeTab?.TocEntries.Count ?? 0)
             .Append(",\"tocIndex\":").Append(_currentTocIndex)
             .Append(",\"findVisible\":").Append(_findVisible ? "true" : "false")

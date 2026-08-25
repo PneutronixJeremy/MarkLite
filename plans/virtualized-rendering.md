@@ -48,6 +48,20 @@ Decisions fixed with the user on 2026-08-24 (do not re-open):
 - Final phase: **release v1.1.0** (user runs `git push` and `release.ps1`;
   the agent never pushes or tags).
 
+Pipeline decision (user, 2026-08-24, after Phase 3 measured both options):
+- **Footnotes ON**, added in Phase 4. MarkView's `UseSupportedExtensions` never
+  included them, so `[^n]` has always rendered as literal text and definitions
+  as ordinary paragraphs. Measured cost of enabling: `stress-large.md` goes
+  2073 → 2074 blocks and 308 → 311 anchors; the other three fixtures do not
+  move at all.
+- **Generic `{#id}` attributes NOT enabled** — do not re-open. The extension
+  claims any trailing `{...}`, not just ids: `# Config for {env}` silently
+  becomes "Config for" and its slug changes from `config-for-env` to
+  `config-for`, breaking existing links and losing text. MarkView's
+  `HeadingRenderer` ignores `HtmlAttributes.Id` anyway, so the classic viewer
+  could not honour such an anchor even once parsed. The model's `{#id}` support
+  stays (it is correct and tested); the pipeline simply never feeds it.
+
 Two features requested mid-plan (user decisions 2026-08-24), added as Phase 1A
 and Phase 4A rather than reopening the phases above:
 - **HTML comments visible** (Phase 1A, next): the user objected to markers that
@@ -677,17 +691,17 @@ offset; the control tree belongs to whichever tab is on screen.
   stale banner. **8/8 PASS**
 
 ## Phase 3: Virtualized host — model, block panel, realization
-Status: Not started
+Status: Complete
 
 The new control renders `testdata/stress-large.md` fast and flat in memory.
 Wired into the app behind a temporary `MARKLITE_VIRTUAL=1` env switch so both
 renderers can be measured side by side until the cutover phase; TOC, search,
 selection and links are Phases 4–6.
 
-- [ ] `tests/MarkLite.Tests` (xunit, net10.0, references the app project;
+- [x] `tests/MarkLite.Tests` (xunit, net10.0, references the app project;
   `InternalsVisibleTo` in the app csproj). Runs with `dotnet test`. Tests
   are added per item below.
-- [ ] `Rendering/Virtual/MarkdownDocumentModel`: parse with the shared
+- [x] `Rendering/Virtual/MarkdownDocumentModel`: parse with the shared
   pipeline; `Blocks` = top-level `Block` list with `SourceSpan`, source
   slice, and a 64-bit FNV-1a hash of the slice; `Headings` (level, text,
   slug, block index) computed from the AST with a fresh `SlugGenerator` and
@@ -696,7 +710,7 @@ selection and links are Phases 4–6.
   and explicit `{#id}` attributes; `TocEntries` via `TocEntry.BuildTree`.
   Tests: block count/spans on the fixtures, slug dedup order matches
   MarkView (`-1`, `-2`), setext headings included, hash stable across parses.
-- [ ] `Rendering/Virtual/BlockRealizer`: one `AvaloniaRenderer` per document
+- [x] `Rendering/Virtual/BlockRealizer`: one `AvaloniaRenderer` per document
   (`BaseUri`, `ImageResizeMode`, extensions registered in the same order as
   today, `pipeline.Setup` — all before the first `Write`); `Realize(index)`
   calls `renderer.Write(block)`, moves the delta children out of
@@ -704,7 +718,7 @@ selection and links are Phases 4–6.
   allowed), sets `Tag = index`. Recycle = drop the container (GC). Also
   applies MarkView's `=WxH` image-size preprocessor to the source before
   parsing (one regex, copied).
-- [ ] `Rendering/Virtual/VirtualBlockPanel : Panel`, hosted in the
+- [x] `Rendering/Virtual/VirtualBlockPanel : Panel`, hosted in the
   `ScrollViewer`: per-block `double[] Heights` + `bool[] Measured`; extent =
   sum; unmeasured height = cached height for the block's hash at the current
   width, else the running average of measured blocks (default 40 px before
@@ -718,10 +732,10 @@ selection and links are Phases 4–6.
   `RealizedRange`, `BlockOffset(index)` (exact if all above are measured,
   else estimated), `ScrollAnchor` get/set = (block index, pixel offset
   within block).
-- [ ] Height cache: `Dictionary<(ulong hash, int width), double>` per
+- [x] Height cache: `Dictionary<(ulong hash, int width), double>` per
   document, survives re-parse (live reload), cleared on font/theme change.
   Test: reload with one changed paragraph keeps every other cached height.
-- [ ] `Rendering/Virtual/VirtualMarkdownView : MarkdownViewer` — inherits
+- [x] `Rendering/Virtual/VirtualMarkdownView : MarkdownViewer` — inherits
   the `:is(mv|MarkdownViewer)` template and both style sheets, sets
   `Content` to the `VirtualBlockPanel` in its constructor and **never** sets
   `Markdown` (guard: setting `Markdown` throws `InvalidOperationException`
@@ -731,11 +745,11 @@ selection and links are Phases 4–6.
   styles (`markdown-paragraph`, `markdown-code-block`, tables, lists) apply
   inside the subclass on a Debug run; if any are scoped in a way that skips
   us, retarget those selectors in `MarkdownTheme.axaml` instead.
-- [ ] Wire-up behind `MARKLITE_VIRTUAL=1`: `CreateViewer` returns the new
+- [x] Wire-up behind `MARKLITE_VIRTUAL=1`: `CreateViewer` returns the new
   view; `RenderTab` calls `Load`; TOC/search/anchor code paths tolerate the
   new view (no-ops logged) until Phases 4–6. Debug `dump-state` reports
   realized/total blocks, extent, and measured-fraction.
-- [ ] Idle trim unchanged; log `render: parsed <n> blocks in <ms>, first
+- [x] Idle trim unchanged; log `render: parsed <n> blocks in <ms>, first
   layout <ms>, realized <k>`.
 
 ### Verification Plan
@@ -756,11 +770,138 @@ selection and links are Phases 4–6.
   input injection): no exception, extent re-estimated, anchor block kept.
 
 ### Phase Summary
-_(write when phase completes)_
+The 528 KB fixture renders in 111 ms and costs 79 MB, flat as it is scrolled
+end to end. Both renderers are live side by side behind `MARKLITE_VIRTUAL=1`.
+
+- **`Rendering/Virtual/MarkdownDocumentModel`** — everything knowable without
+  building controls: top-level blocks with source spans and an FNV-1a hash per
+  block, every heading (nested ones included) with the slug MarkView's own
+  renderer would give it, an anchor table, and the TOC tree via
+  `TocEntry.BuildTree`. MarkView's `=WxH` image preprocessor is copied here,
+  because spans must index the text the renderers actually see. Nothing in this
+  file touches Avalonia, which is why the unit tests can be plain xunit.
+- **`BlockRealizer`** — one `AvaloniaRenderer` per document; `Write(block)`
+  appends that block's controls to `RootPanel`, which are then moved into a
+  `BlockContainer` of their own. Extensions register and `pipeline.Setup` runs
+  before the first `Write`, because Markdig caches its renderer choice per type.
+  Headings are **re-tagged from the model** afterwards: MarkView's slug
+  generator counts repeats and assumes one ordered pass, so under scroll-order
+  realization a heading realized twice would otherwise carry two different
+  anchors.
+- **`VirtualBlockPanel`** — a height per block (measured, or cached, or the
+  running average), offsets as a prefix sum, extent as the total; realization
+  window is the viewport ± one viewport. Heights are cached by
+  `(block hash, layout width)`, so a recycled block keeps its true height and a
+  reload of a lightly edited file re-uses nearly every entry.
+- **`VirtualMarkdownView : MarkdownViewer`** — subclassed only for the chrome
+  (template, `PART_ScrollViewer`, theme, the `LinkClicked` routed event). It
+  never sets `Markdown`/`Pipeline`/`BaseUri`, all of which drive the base render
+  path; `Markdown` is guarded with an exception naming `Load(text)`.
+
+Four things that were not obvious and cost real time:
+
+- **MarkLite's own theme selectors did not match a subclass.** They were scoped
+  `mv|MarkdownViewer …`, which is exact-type; MarkView's own theme uses
+  `:is(mv|MarkdownViewer)` for exactly this reason. All 30 MarkLite selectors
+  were retargeted to `:is(...)`, so both viewers are styled identically.
+- **`viewer.UseMath()` reassigns `Pipeline`.** Assigning `Pipeline` runs
+  `MarkdownViewer.RenderMarkdown`, which sets `Content` from scratch — on the
+  virtual view that silently threw the panel away, and the symptom was "the
+  scroll extent equals the viewport". The call was replaced with
+  `Extensions.AddMath()`; the maths parsing it wanted is already in
+  `MarkLitePipeline.Shared`.
+- **The parse pipeline is now a single named thing** (`Rendering/MarkLitePipeline`),
+  shared by both viewers, the model and the tests. Before this it was rebuilt in
+  three places, and `UseMath()` quietly replaced it with a fourth.
+- **A scroll correction cannot be applied from inside the layout pass that
+  computed it.** The ScrollViewer arranges around its content and re-clamps
+  `Offset` afterwards, so the write was discarded; it is posted at `Loaded`
+  priority instead. And a width change invalidates every height at once, so the
+  anchor block is *held* across the following passes until its offset stops
+  moving — correcting once left the reader 62 blocks away.
+
+Known gaps, all owned by later phases and all logged rather than hidden:
+
+- **Search still walks the rendered tree**, so under the virtual viewer it finds
+  matches in realized blocks only (1 of 373 on the stress fixture). The app logs
+  `search: realized blocks only (virtual viewer)` and the affected checks report
+  SKIP with the real numbers. Phase 5.
+- **Current-section tracking is block-level**, without the Phase 4 refinement
+  from realized heading controls.
+- **A resize leaves the reader within a few blocks**, not exactly on one: blocks
+  above the viewport are never realized, so their heights stay estimates and the
+  anchor's absolute offset can only be as good as those.
+- **TOC entries are already model-backed** — brought forward from Phase 4
+  because otherwise the sidebar would have been empty under the flag and the
+  capture comparison meaningless. `HeadingControls` and the `toc mismatch` path
+  are untouched and still Phase 4's to remove.
+
+### Verification Plan results
+- `dotnet test` → **15 passed, 0 failed**. Two of those tests exist because the
+  first version of them failed: the app's pipeline enables **neither footnotes
+  nor generic `{#id}` attributes** (they are not in MarkView's
+  `UseSupportedExtensions`), so a footnote definition parses as an ordinary
+  paragraph — including the three in the stress fixture. The model handles both
+  correctly and a test proves it against a pipeline that enables them; a second
+  test pins the app's actual behavior so enabling them later is a deliberate
+  change. **PASS**
+- Stress fixture block count is **2073**, not the 2078 the generator reports —
+  the generator counts blocks it emits, the parser merges some. Pinned in a
+  test. **RECORDED**
+- Published exe, `MARKLITE_VIRTUAL=1`, `stress-large.md`: first content render
+  **111 ms** (< 300), working set after first render **79.2 MB** (< 90), after
+  `scroll-end` + `scroll 0` + 10 pages + `gc` **79.1 MB** (< 100). Realized
+  blocks never exceeded **18 of 2073 (0.9 %)**, against a < 10 % limit. **PASS**
+- `test-virtual.ps1` → **ALL PASS (18 checks)**, including extent 224 401 px
+  over the whole document, `scroll-end` reaching the last block, `toc 250`
+  landing on section 250, working set 89.5 MB after the scroll workout, and a
+  300 px window resize keeping the reader within 5 blocks (measured drift: 3).
+- Memory, all three fixtures, virtual vs the Phase 2 classic numbers:
+
+  | Stage | Classic | Virtual |
+  |---|---:|---:|
+  | first render (sample.md) | 73.2 | 74.1 |
+  | opened 2 tabs | 75.4 | 75.5 |
+  | opened 3 tabs (stress active) | 446.8 | 88.3 |
+  | after scroll-through | 315.3 | 91.4 |
+  | after gc | 315.1 | **89.9** |
+
+  sample.md costs **+0.9 MB** under the virtual viewer — the per-block arrays
+  and the parsed model — which is the one number that is not an improvement.
+  Everything involving the large document is roughly a quarter of the classic
+  figure.
+- Regression, **classic renderer** (`MARKLITE_VIRTUAL` unset): `test-tabs`
+  ALL PASS (14), `test-toc-search` ALL PASS (12) on both fixtures,
+  `test-html-comments` ALL PASS (9). **PASS**
+- Regression, **virtual renderer**: `test-tabs` ALL PASS (14),
+  `test-html-comments` ALL PASS (9), `test-toc-search` ALL PASS (12, 2 skipped)
+  on sample-plan.md and ALL PASS (12, 3 skipped) on stress-large.md — the skips
+  are the search gap above, printed with their real numbers. **PASS**
+- Capture comparison at offset 0 on `sample-plan.md`, classic vs virtual,
+  1400x1000: **0.15 % of sampled pixels differ**, and the difference is the
+  scrollbar thumb (shorter under an estimated extent) — which the plan allows.
+  Text column, sidebar, tables and blockquotes are pixel-identical.
+- Resize by script used `SetWindowPos` with `SWP_NOACTIVATE`, not UIA
+  `TransformPattern`: same effect, one less dependency, still no injected input
+  and no focus stealing (the same substitution Phase 1 made for `WM_CLOSE`).
 
 ## Phase 4: Feature parity — TOC, anchors, scroll anchor, live reload
 Status: Not started
 
+- [ ] Enable footnotes in `MarkLitePipeline.Shared`
+  (`Use<Markdig.Extensions.Footnotes.FootnoteExtension>()`, NOT MarkView's
+  `UseFootnotes` — the name is ambiguous between the two namespaces). Knock-on
+  effects to handle in the same item: `[^n]` becomes a superscript link instead
+  of literal text; definitions leave their place in the flow and collect into a
+  separator + footnote group at the END of the document (visible relocation for
+  any file that defines them mid-document); `fn-<n>` anchors start resolving,
+  which is what the footnote-slug check below needs. Update the pinned block
+  count in `MarkdownDocumentModelTests` (2073 → 2074) and replace
+  `FootnoteAndIdAnchorsAreAbsentUnderTheAppsPipeline` with one that asserts
+  footnotes present and `{#id}` still absent. Re-run
+  `test-html-comments`/`test-toc-search` on both renderers: the fixtures other
+  than the stress file were measured not to move, so any change there is a real
+  regression.
 - [ ] TOC sidebar from `Model.TocEntries` (no visual-tree walk); remove
   `HeadingControls` and the `toc mismatch` path. Current-section tracking:
   nearest heading block index ≤ `FirstVisibleBlock`, refined with the real
@@ -786,7 +927,12 @@ Status: Not started
   assertions) for the virtual view.
 
 ### Verification Plan
-- `dotnet test` green (anchor mapping, hash-based reuse).
+- `dotnet test` green (anchor mapping, hash-based reuse, footnote anchors).
+- Footnotes: `stress-large.md` parses to 2074 blocks and 311 anchors; the
+  rendered document shows a footnote group at the end and `[^n]` no longer
+  appears as literal text; `sample.md`, `sample-plan.md` and `sample-html.md`
+  render identically to Phase 3 (capture comparison, differences only where a
+  footnote exists).
 - `test-toc-search.ps1` TOC half PASS on stress fixture: `toc 250` lands the
   heading within 8±2 px of the viewport top (measured via `dump-state`
   after the correction pass); current-section index becomes 250; `anchor`

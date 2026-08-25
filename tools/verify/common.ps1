@@ -19,6 +19,7 @@ $script:App = $null
 $script:LogPath = $null
 $script:Failures = 0
 $script:Checks = 0
+$script:Skips = 0
 
 # ------------------------------------------------------------------ native
 
@@ -59,6 +60,16 @@ function Write-Fail {
     Write-Host "FAIL  $Text" -ForegroundColor Red
 }
 
+<#  A check that cannot be run in this configuration. Counted so the totals
+    still add up, but never a failure - the reason is printed so a SKIP can
+    never quietly become "we tested that". #>
+function Write-Skip {
+    param([string]$Text)
+    $script:Checks++
+    $script:Skips++
+    Write-Host "SKIP  $Text" -ForegroundColor Yellow
+}
+
 function Assert-True {
     param([bool]$Condition, [string]$Message)
     if ($Condition) {
@@ -91,7 +102,8 @@ function Exit-WithSummary {
     param([string]$Name)
     Write-Host ''
     if ($script:Failures -eq 0) {
-        Write-Host "${Name}: ALL PASS ($script:Checks checks)" -ForegroundColor Green
+        $suffix = if ($script:Skips -gt 0) { ", $script:Skips skipped" } else { '' }
+        Write-Host "${Name}: ALL PASS ($script:Checks checks$suffix)" -ForegroundColor Green
         exit 0
     }
     Write-Host "${Name}: $script:Failures of $script:Checks checks FAILED" -ForegroundColor Red
@@ -107,6 +119,15 @@ function Set-MarkLiteExe {
 
 function Get-MarkLiteExe {
     return $script:Exe
+}
+
+<#  Handle of the running app's main window, for the few checks that have to
+    act on the window itself (capture, resize). #>
+function Get-MarkLiteWindow {
+    if (-not $script:App -or $script:App.MainWindowHandle -eq [IntPtr]::Zero) {
+        throw 'No MarkLite window.'
+    }
+    return $script:App.MainWindowHandle
 }
 
 function Get-VerifyLogPath {
@@ -165,6 +186,12 @@ function Start-MarkLite {
     #  never receive the test documents, and must never answer debug commands.
     $env:MARKLITE_INSTANCE = 'verify'
     Remove-Item Env:MARKLITE_STANDALONE -ErrorAction SilentlyContinue
+
+    #  MARKLITE_VIRTUAL is inherited from the caller's shell so both renderers
+    #  can be measured with the same scripts. Reported, never assumed: a memory
+    #  table that does not say which renderer produced it is worthless.
+    $renderer = if ($env:MARKLITE_VIRTUAL -eq '1') { 'virtualized' } else { 'classic' }
+    Write-Host "  renderer: $renderer" -ForegroundColor DarkGray
 
     foreach ($stray in @(Get-Process -Name 'MarkLite' -ErrorAction SilentlyContinue)) {
         if ($stray.Path -eq $script:Exe) {

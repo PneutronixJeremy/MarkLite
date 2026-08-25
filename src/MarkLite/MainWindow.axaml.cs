@@ -631,6 +631,12 @@ public partial class MainWindow : Window
             _activeTab.StripItem.Classes.Remove("TabItemActive");
             _activeTab.Viewer.IsVisible = false;
             _activeTab.Search.Detach();
+            /*  Dropping the tree only frees it if nothing else still points
+                into it. HeadingControls holds one TextBlock per heading, and a
+                detached control keeps its own parents alive, so leaving the
+                list populated pins most of the document that was just
+                discarded. TocEntries are plain data and stay. */
+            _activeTab.HeadingControls.Clear();
             _activeTab.Viewer.Markdown = null;
             DebugLog.Write($"tab scroll saved {_activeTab.SavedScrollY:F1} for '{_activeTab.DisplayName}'; tree dropped");
         }

@@ -572,6 +572,14 @@ offset; the control tree belongs to whichever tab is on screen.
   crash any more (that is fixed) but because the template — and the
   `PART_ScrollViewer` the scroll hook rides on — is built once on first
   attachment.
+- **Dropping the tree only frees it if nothing points into it.** The first
+  measurement of three heavy tabs settled at 455 MB instead of ~315: the tab's
+  `HeadingControls` list still held one `TextBlock` per heading (308 of them on
+  the stress fixture), and a detached control keeps its own parent chain alive,
+  so most of the discarded document stayed reachable. `ActivateTab` now clears
+  the list along with the tree. `TocEntries` are plain data and stay;
+  `DocumentSearch.Detach()` already dropped its own control references. Any
+  future cache of rendered controls needs the same treatment.
 - **Log-line ordering is load-bearing for the scripts**: `tab switched to
   '<name>'; render <ms> ms` is posted at `Background` priority from
   `RenderTab`'s `afterLayout`, so it lands *after* the scroll restore's own
@@ -617,30 +625,48 @@ offset; the control tree belongs to whichever tab is on screen.
 - Regression: `test-toc-search.ps1` ALL PASS (12) on sample-plan.md and ALL
   PASS (12) on stress-large.md (308 headings, `find station` = 373 both sides);
   `test-html-comments.ps1` ALL PASS (9). **PASS**
-- Memory, published exe, 1400x1000 (all three fixtures, stress-large.md ending
-  as the active tab):
+- Memory, published exe, 1400x1000. The plan's fixture set (sample.md +
+  sample-plan.md + stress-large.md, the last of them active at the end):
 
   | Stage | Tabs | Working set (MB) | Managed (MB) |
   |---|---:|---:|---:|
-  | first render (sample.md) | 1 | 73.8 | 6.4 |
-  | opened 2 tabs | 2 | 76.4 | 10.7 |
-  | opened 3 tabs (stress active) | 3 | 381.8 | 293.4 |
-  | after scroll-through | 3 | 321.7 | 242.1 |
-  | after cycling tabs twice | 3 | 471.7 | 319.9 |
-  | after gc | 3 | 317.6 | 241.3 |
+  | first render (sample.md) | 1 | 73.2 | 6.9 |
+  | opened 2 tabs | 2 | 75.4 | 10.0 |
+  | opened 3 tabs (stress active) | 3 | 446.8 | 260.5 |
+  | after scroll-through | 3 | 315.3 | 239.3 |
+  | after cycling tabs twice | 3 | 405.7 | 253.6 |
+  | after gc | 3 | 315.1 | 239.3 |
 
-  Single heaviest tab on the same build: 314.8 MB first render, **313.5 MB
-  after gc**. So three tabs settle at **+4.1 MB** over the heaviest one alone
-  (plan allows +10) and after cycling twice at the same +4.1 MB (allows +5).
-  **PASS** — with the caveat that the raw `after cycling` row (471.7 MB) is a
-  transient: activation re-renders the whole 528 KB document, and the spike
-  only comes back down at the next collect. Phase 3 removes the spike by not
-  building the whole tree in the first place.
+  Single heaviest tab on the same build: **313.5 MB after gc**. Three tabs
+  settle at **+1.6 MB** over it (plan allows +10), unchanged after cycling
+  twice (allows +5). **PASS**. The raw `opened 3 tabs` and `after cycling`
+  rows are transients: activation re-renders the whole 528 KB document and the
+  spike only comes down at the next collect. Phase 3 removes the spike by
+  never building the whole tree.
+
+- That set understates the phase, because two of its three documents are ~2 KB.
+  **Three copies of the 528 KB fixture** is the shape the phase was for:
+
+  | Stage | Tabs | Working set (MB) | Managed (MB) |
+  |---|---:|---:|---:|
+  | first render | 1 | 323.8 | 246.2 |
+  | opened 2 tabs | 2 | 672.3 | 487.0 |
+  | opened 3 tabs | 3 | 547.4 | 387.0 |
+  | after scroll-through | 3 | 324.8 | 245.0 |
+  | after cycling tabs twice | 3 | 486.9 | 256.7 |
+  | after gc | 3 | 320.9 | 241.7 |
+
+  Three heavy documents settle at **320.9 MB — the cost of one** (the old
+  renderer would have held all three trees at once). Working set is now flat in
+  the NUMBER of tabs; it is still linear in the size of the ACTIVE document,
+  which is Phase 3's job.
 - The stress fixture's single-tab figure has grown against the Phase 1
   baseline (313.5 vs 303.0 MB after gc). Not this phase's doing: Phase 1A's
   clear-then-set re-render fix landed after that baseline and stress-large.md
   was never re-measured. Recorded here so Phase 3's comparison starts from a
   real number.
+- `DocumentTab.HeadingControls` is cleared on deactivation (see the summary);
+  without it three heavy tabs settled at 455 MB instead of 320.9.
 - Switch cost on sample-plan.md: **11 ms** (plan allows < 250). **PASS**
 - Scroll restore after switch away/back: 1125.3 px saved, 1125.3 px restored
   (±1 allowed). **PASS**

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
@@ -165,7 +166,7 @@ public partial class MainWindow
                 return visible ? "shown" : "hidden";
             }
 
-                        case "gutter":
+            case "gutter":
             {
                 var showLines = !string.Equals(argument, "off", StringComparison.OrdinalIgnoreCase);
                 SetLineNumbersVisible(showLines);
@@ -183,9 +184,38 @@ public partial class MainWindow
                 DebugLog.Write($"state {BuildStateJson()}");
                 return "written";
 
+            case "dump-text":
+                return DumpModelText();
+
             default:
                 return $"unknown command '{verb}'";
         }
+    }
+
+    /*  Writes the model's plain-text projection of every block to a fixed file
+        in the temp directory. What search actually matches against, dumped so a
+        script can count occurrences in it with a plain text tool and compare
+        that against what the find bar reports — the two must agree exactly, and
+        counting the SOURCE instead only ever approximates it.
+
+        Blocks are separated by a blank line, so nothing a search could match
+        straddles two of them and the file's own match count is the
+        document's. */
+    private string DumpModelText()
+    {
+        if (_activeTab?.Viewer is not Rendering.Virtual.VirtualMarkdownView { Model: { } model })
+        {
+            return "no model (classic viewer)";
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), "marklite-blocktext.txt");
+        var builder = new StringBuilder(model.Text.Length);
+        for (var index = 0; index < model.Blocks.Count; index++)
+        {
+            builder.Append(model.BlockText(index, Rendering.HtmlComments.Visible)).Append("\n\n");
+        }
+        File.WriteAllText(path, builder.ToString());
+        return $"{model.Blocks.Count} blocks, {builder.Length} chars";
     }
 
     private static double ParseDouble(string value)
@@ -329,6 +359,11 @@ public partial class MainWindow
             .Append(",\"findVisible\":").Append(_findVisible ? "true" : "false")
             .Append(",\"matches\":").Append(_activeTab?.Search.Count ?? 0)
             .Append(",\"matchIndex\":").Append(_activeTab?.Search.CurrentOrdinal ?? -1)
+            /*  Matches that actually carry a highlight right now. Under the
+                virtualizing viewer that is the realized subset, so a check can
+                tell "the match was found in the model" from "the match is on
+                screen with a mark on it". */
+            .Append(",\"highlighted\":").Append(_activeTab?.Search.HighlightedCount ?? 0)
             .Append(",\"workingSetMb\":").Append(Number(process.WorkingSet64 / 1024.0 / 1024.0))
             .Append(",\"privateMb\":").Append(Number(process.PrivateMemorySize64 / 1024.0 / 1024.0))
             .Append(",\"managedMb\":").Append(Number(GC.GetTotalMemory(false) / 1024.0 / 1024.0))

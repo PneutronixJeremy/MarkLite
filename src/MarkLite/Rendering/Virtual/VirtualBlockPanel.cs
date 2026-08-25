@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Avalonia;
 using Avalonia.Controls;
@@ -91,6 +92,10 @@ internal sealed class VirtualBlockPanel : Panel
 
     /// <summary>Raised when a block gains controls, so a search can highlight it.</summary>
     public event Action<int, BlockContainer>? Realized;
+
+    /// <summary>Raised when a block loses its controls, so a search can forget the highlights it
+    /// had put in them. Nothing needs undoing — the controls left the tree.</summary>
+    public event Action<int>? Recycled;
 
     /// <summary>The ScrollViewer this panel is scrolled by; realization follows its offset.</summary>
     public ScrollViewer? Scroller
@@ -207,6 +212,16 @@ internal sealed class VirtualBlockPanel : Panel
         }
         _realized.Clear();
 
+        /*  Every block index in play a moment ago now means something else, so
+            anything keyed by one has to let go. Carried containers are NOT
+            re-announced as realized: their controls were built before, and a
+            listener that re-decorated them would decorate them twice. The
+            window re-applies the search after a load for that reason. */
+        foreach (var (oldIndex, _) in carried)
+        {
+            Recycled?.Invoke(oldIndex);
+        }
+
         _alignment = _model is null ? [] : model.AlignFrom(_model);
 
         _model = model;
@@ -304,6 +319,21 @@ internal sealed class VirtualBlockPanel : Panel
         EnsureOffsets();
         return _offsets[Math.Clamp(index, 0, _offsets.Length - 1)];
     }
+
+    /// <summary>How tall a block is: measured where it has been measured, the running estimate
+    /// otherwise. Enough to place something vertically INSIDE a block — a search match halfway
+    /// down a long code fence — without needing the block realized first.</summary>
+    public double BlockHeight(int index)
+    {
+        if (index < 0 || index >= _heights.Length)
+        {
+            return 0;
+        }
+        return _measured[index] ? _heights[index] : EstimatedHeight;
+    }
+
+    /// <summary>The current scroll offset, for callers that only want to report it.</summary>
+    public double ScrollOffset => _scroller?.Offset.Y ?? 0;
 
     /// <summary>Scrolls a block to the top of the viewport, plus a margin (negative lifts the
     /// block down from the very edge).</summary>
@@ -638,18 +668,24 @@ internal sealed class VirtualBlockPanel : Panel
         }
         container.SizeChanged -= OnBlockSizeChanged;
         Children.Remove(container);
+        Recycled?.Invoke(index);
     }
 
     private void RecycleAll()
     {
         //  Removed one by one, not Children.Clear(): the gutter is a child too
         //  and it outlives every document.
+        var indices = _realized.Keys.ToArray();
         foreach (var container in _realized.Values)
         {
             container.SizeChanged -= OnBlockSizeChanged;
             Children.Remove(container);
         }
         _realized.Clear();
+        foreach (var index in indices)
+        {
+            Recycled?.Invoke(index);
+        }
     }
 
     // ─────────────────────────────────────────────────────── heights

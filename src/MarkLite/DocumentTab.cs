@@ -44,7 +44,7 @@ internal sealed class DocumentTab : IDisposable
 {
     public required MarkdownViewer Viewer { get; init; }
     public required DocumentWatcher Watcher { get; init; }
-    public required DocumentSearch Search { get; init; }
+    public required IDocumentSearch Search { get; init; }
     public required Border StripItem { get; init; }
     public required TextBlock StripLabel { get; init; }
 

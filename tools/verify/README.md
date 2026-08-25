@@ -78,18 +78,37 @@ Ground rules:
   virtualizing viewer it also lands the heading 8 px below the viewport top,
   after the panel has corrected its own estimate; `anchor <slug>` resolves, and
   so does a footnote slug on a document that defines one) and find-in-document
-  (match count equals a source count, `find-next` advances, closing clears).
+  (match count equals a source count, `find-next` advances, closing clears
+  matches and highlights). Under the virtualizing viewer the search half also
+  asserts what only a model-backed search can do: the count equals a count over
+  the app's own text projection (`dump-text`) **exactly**, matches outside the
+  realized window are counted but not highlighted, every match stepped to ends
+  up realized, highlighted and inside the viewport, and having a search active
+  costs under 8 MB of working set.
 
 Pass list parameters comma-separated (`-Files a.md,b.md`): with `pwsh -File`,
 space-separated tokens do not bind to an array parameter.
 
-### Counting matches against the source
+### Counting matches: two comparisons, two meanings
 
-`test-toc-search.ps1` compares the app's match count with a plain count over
-the source file. The app searches the RENDERED text, so the source count first
-strips HTML comments and link/image destinations — an anchor such as
-`(#station-overview)` is never drawn and must not be counted. Terms are chosen
-to appear only in prose; a mismatch on them is a real regression.
+`test-toc-search.ps1` compares the app's match count with two other counts.
+
+The count over the **source file** is an approximation. The app searches what a
+reader can see, so the script first strips HTML comments and link/image
+destinations — an anchor such as `(#station-overview)` is never drawn and must
+not be counted. Terms are chosen to appear only in prose; a mismatch on them is
+a real regression, not a counting artefact.
+
+The count over the app's **own text projection** is not an approximation. The
+`dump-text` command writes `MarkdownDocumentModel.BlockText` for every block to
+`marklite-blocktext.txt` in the temp directory — the very text the search ran
+over — so that comparison is asserted as exact equality. It is the check that
+catches the projection drifting away from what the renderers draw: the
+projection is a description of their behaviour (chrome, dropped HTML, diagrams
+and formulas contribute nothing; decoded entities and code lines do), and the
+renderers are the authority. The app logs
+`search: block <n> projects <x> matches, renders <y>` when a realized block
+disagrees, which is the other half of the same check.
 
 ## Fixtures
 

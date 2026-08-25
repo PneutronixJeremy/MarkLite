@@ -639,7 +639,11 @@ public partial class MainWindow : Window
         {
             Viewer = viewer,
             Watcher = new DocumentWatcher(),
-            Search = new DocumentSearch(viewer),
+            /*  Model-backed search for the virtualizing viewer; the tree walk
+                is only right for a viewer that renders everything. */
+            Search = viewer is VirtualMarkdownView virtualViewer
+                ? new VirtualDocumentSearch(virtualViewer)
+                : new DocumentSearch(viewer),
             StripItem = item,
             StripLabel = label,
         };

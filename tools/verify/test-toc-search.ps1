@@ -13,15 +13,20 @@
                 must land on that heading, and on a footnote when the document
                 has any.
       Search  - "find <term>" must report the same number of matches as a
-                plain text count over the source file, and "find-next" must
-                advance the current match.
+                plain text count over the source file, "find-next" must advance
+                the current match, and under the virtualizing viewer each match
+                stepped to must end up realized, highlighted and on screen -
+                the count comes from the parsed document, so it does not care
+                what is rendered, but the HIGHLIGHT does.
 
-    Match counting is an approximation by nature: the app searches the
-    RENDERED text (headings, paragraphs, tables, code) while the script counts
-    the SOURCE. The terms below are chosen so the two agree exactly - words
-    that appear only in prose, never inside markdown syntax, link targets or
-    the generator's HTML comment. A mismatch on those terms is a real
-    regression, not a counting artefact.
+    Two counts are compared, and they mean different things. The count over the
+    SOURCE file is an approximation by nature - the app searches what a reader
+    can see, and the script strips the markup that is never drawn. The terms
+    below are chosen so the two agree exactly: words that appear only in prose,
+    never inside markdown syntax, link targets or the generator's HTML comment.
+    The count over the app's own text projection ("dump-text") is not an
+    approximation and is asserted as exact equality: it is the very text the
+    search ran over.
 
 .PARAMETER Exe
     Alternative MarkLite.exe (e.g. an unzipped portable build).
@@ -143,44 +148,84 @@ try {
     }
 
     # ------------------------------------------------------------- search
+    #  Baseline for the memory check below: collected first, so it is compared
+    #  against a like-for-like figure rather than against the garbage the TOC
+    #  exercise above happened to leave behind.
+    [void](Send-Cmd 'scroll 0')
+    [void](Send-Cmd 'gc')
+    $idle = Get-State
+
     $expected = Get-SourceMatchCount -Path $File -Needle $Term
     Assert-True ($expected -gt 1) "test term '$Term' occurs $expected times in the source"
 
     $ack = Send-Cmd "find $Term"
     $reported = [int]([regex]::Match($ack.Line, '(\d+) matches').Groups[1].Value)
-
-    #  Search still walks the RENDERED control tree, and the virtualizing viewer
-    #  only ever renders the blocks near the viewport - so it can see a fraction
-    #  of the document's matches. Reported as skipped, with the numbers, rather
-    #  than asserted against a total the viewer cannot yet know: search moves to
-    #  the parsed model in a later phase, and these two checks come back then.
-    if ($virtual) {
-        Write-Skip "find '$Term' counts realized blocks only ($reported of $expected) - model-backed search not implemented yet"
-    } else {
-        Assert-Equal $expected $reported "find '$Term' reports the source match count"
-    }
+    Assert-Equal $expected $reported "find '$Term' reports the source match count"
 
     $state = Get-State
     Assert-Equal 0 $state.matchIndex 'find starts on the first match'
+    Assert-Equal $expected $state.matches 'dump-state agrees on the match count'
+
     if ($virtual) {
-        Write-Skip "dump-state match count follows realization ($($state.matches) of $expected)"
-    } else {
-        Assert-Equal $expected $state.matches 'dump-state agrees on the match count'
+        <#  Exact equality, not an approximation: dump-text writes the model's
+            own plain-text projection - the very text the search matched
+            against - so a difference here is the search and the projection
+            disagreeing, not markdown syntax getting in the way. #>
+        [void](Send-Cmd 'dump-text')
+        $dump = Join-Path ([IO.Path]::GetTempPath()) 'marklite-blocktext.txt'
+        Assert-True (Test-Path -LiteralPath $dump) 'dump-text wrote the block projection'
+        $projected = ([regex]::Matches(
+            [IO.File]::ReadAllText($dump), [regex]::Escape($Term), 'IgnoreCase')).Count
+        Assert-Equal $projected $reported "find '$Term' equals the projection's own count"
+
+        Assert-True ($state.highlighted -gt 0) `
+            "the current match is highlighted ($($state.highlighted) of $($state.matches) on screen)"
+        if ($state.realizedBlocks -lt $state.blocks) {
+            #  The count is the document's; the highlight can only be the
+            #  realized part of it. Both at once is the whole point.
+            Assert-True ($state.highlighted -lt $state.matches) `
+                'matches outside the realized window are counted but not highlighted'
+        } else {
+            Write-Skip "$([IO.Path]::GetFileName($File)) is small enough to realize whole - no unhighlighted matches to check"
+        }
+
+        #  Search state is a match list plus split runs in the realized blocks;
+        #  neither should register on the working set.
+        [void](Send-Cmd 'gc')
+        $searching = Get-State
+        Assert-True (($searching.workingSetMb - $idle.workingSetMb) -lt 8) `
+            ("search adds under 8 MB ({0:N1} -> {1:N1} MB)" -f $idle.workingSetMb, $searching.workingSetMb)
     }
 
-    [void](Send-Cmd 'find-next')
-    $state = Get-State
-    if ($virtual -and $state.matches -lt 2) {
-        #  Stepping needs at least two matches to step between, and the search
-        #  can only see the realized ones. Comes back with model-backed search.
-        Write-Skip 'find-next needs more than one visible match under the virtualizing viewer'
-    } else {
-        Assert-Equal 1 $state.matchIndex 'find-next advances the current match'
+    <#  Stepping. Each step must advance the ordinal, and under the
+        virtualizing viewer must also leave the target block realized and
+        within the viewport - a match the reader cannot see has not been
+        found for them. #>
+    $steps = [Math]::Min(5, $expected - 1)
+    foreach ($step in 1..$steps) {
+        [void](Send-Cmd 'find-next')
+        $state = Get-State
+        Assert-Equal $step $state.matchIndex "find-next advanced to match $($step + 1)"
+        if (-not $virtual) {
+            continue
+        }
+        Assert-True ($state.highlighted -gt 0) "match $($step + 1) is highlighted"
+        Assert-True ($state.targetBlock -ge $state.firstRealized `
+                -and $state.targetBlock -le $state.lastRealized) `
+            "match $($step + 1) realized block $($state.targetBlock) (window $($state.firstRealized)..$($state.lastRealized))"
+        <#  The jump aims 100 px above the match, so the target block's top sits
+            at most that far below the viewport top; a match deep inside a tall
+            code fence puts it above instead, never a whole viewport above. #>
+        $tab = Get-ActiveTabState $state
+        $delta = $state.targetBlockOffset - $tab.scrollY
+        Assert-True ($delta -le 101 -and $delta -gt -$tab.viewport) `
+            ("match $($step + 1) is inside the viewport (block top {0:N0} px from the top)" -f $delta)
     }
 
     [void](Send-Cmd 'find-close')
     $state = Get-State
     Assert-Equal 0 $state.matches 'closing the find bar clears the matches'
+    Assert-Equal 0 $state.highlighted 'closing the find bar removes every highlight'
 }
 finally {
     Stop-MarkLite

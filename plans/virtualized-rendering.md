@@ -1232,15 +1232,15 @@ Three things worth knowing:
   one. **PASS**
 
 ## Phase 5: Search over the model
-Status: Not started
+Status: Complete
 
-- [ ] `Model.BlockText(index)`: lazily computed plain-text projection per
+- [x] `Model.BlockText(index)`: lazily computed plain-text projection per
   block by walking Markdig inlines (`LiteralInline`, `CodeInline`,
   `LineBreakInline` → newline, `HtmlEntityInline` → decoded, link/emphasis
   children, `InlineUIContainer`-only inlines → empty), `CodeBlock` lines,
   table cells, nested lists — no list markers, code language labels or
   checkbox glyphs, matching what `DocumentSearch` skips today.
-- [ ] `DocumentSearch` rewritten in two layers: **model search** (matches =
+- [x] `DocumentSearch` rewritten in two layers: **model search** (matches =
   (block, start, length); count, current, next/prev, `ScrollToBlock` for the
   current match, code-block line offset kept for the scroll target) and
   **block highlighting** applied to realized blocks only, reusing the
@@ -1248,12 +1248,12 @@ Status: Not started
   on the realized block's rendered inline text so the highlight never depends
   on the projection matching the rendered text exactly. Per-block count
   mismatch between the two is logged once per block (debug only).
-- [ ] `Realized` event → highlight the new block if a search is active;
+- [x] `Realized` event → highlight the new block if a search is active;
   recycled blocks need no undo (they are dropped).
-- [ ] Current-match emphasis (orange) follows the current match across
+- [x] Current-match emphasis (orange) follows the current match across
   realization; F3 to an unrealized match scrolls, realizes, then emphasizes
   (same two-pass pattern as anchors).
-- [ ] Find bar count text and `find*` debug commands unchanged from the
+- [x] Find bar count text and `find*` debug commands unchanged from the
   user's point of view; `dump-state` gains `matches` and `highlighted`.
 
 ### Verification Plan
@@ -1270,7 +1270,135 @@ Status: Not started
 - Capture at the current match shows the orange emphasis (PrintWindow).
 
 ### Phase Summary
-_(write when phase completes)_
+Find-in-document now reports the document rather than the screen. `find station`
+on the stress fixture says **373 matches** under the virtualizing viewer, the
+same number the classic renderer reports from a tree that holds all 2074 blocks,
+while only 5 of those matches have a mark on them — because only 14 blocks are
+realized. `dotnet test` is at 43 tests; `test-toc-search` at 42 checks on the
+stress fixture (39 on `sample-plan.md`).
+
+- **The search is two layers.** `Rendering/Virtual/ModelSearch` finds matches in
+  the parsed document — `(block, start, length)` plus the line position inside
+  the block — and knows nothing about Avalonia, so it is testable against a
+  fixture. `Rendering/Virtual/VirtualDocumentSearch` owns the count, the current
+  match and the highlighting of whichever blocks happen to be realized. The
+  count and the navigation therefore do not depend on what is rendered; only the
+  highlight does.
+- **`MarkdownDocumentModel.BlockText(index, includeHtmlComments)`** is the
+  projection: the characters a reader would see if the block were on screen, in
+  that order, and nothing else. Cached per block. The plan wrote it as
+  `BlockText(index)`; the flag had to be added because comment visibility is
+  decided while a control is BUILT, and a projection that ignored the View
+  toggle would describe a tree that is not on screen. Flipping it drops the
+  cache.
+- **The projection's rules are the renderers' behaviour, not markdown's
+  grammar.** List bullets and numbers, the code panel's language label and the
+  task checkbox are chrome (`HighlightSession` skips the same three). Raw HTML
+  contributes nothing except comments, and those only while the toggle is on.
+  Front matter draws nothing, a maths block draws a formula, a mermaid fence
+  draws a diagram: no text to find in any of the three. An image is a picture,
+  so its alt text is markup — but a link's label is text, and its destination is
+  not.
+- **The pin that keeps those rules honest** is a test asserting 373 for
+  "station" on the stress fixture — the count the classic renderer measures off
+  a fully rendered tree. Plus the app's own
+  `search: block <n> projects <x> matches, renders <y>` line, logged once per
+  block when a realized block disagrees with the projection. **Not one such line
+  appeared in any run of any script.**
+- **`HighlightSession`** (`SearchHighlight.cs`) is the run-splitting extracted
+  from `DocumentSearch`, unchanged in behaviour: split the text runs at the match
+  boundaries, keep spans so link hit-testing survives, record an undo snapshot.
+  The classic search uses one session for the whole tree; the virtual one uses a
+  session per realized block, so recycling a block is `Remove()` and nothing
+  else. `IDocumentSearch` is what the window talks to; `DocumentSearch` dies with
+  the classic renderer at the cutover.
+- **A match inside a long block is scrolled to by its line**, not to the top of
+  its block: `VirtualBlockPanel.BlockHeight` (measured where measured, estimated
+  otherwise) times the match's line position, minus the 100 px the classic path
+  also leaves above the match. A match halfway down a 200-line fence lands on
+  screen rather than a screenful below it.
+- **`dump-state` gains `highlighted`** — matches that currently carry a mark, as
+  opposed to `matches`, which was already the total. The two differing is what a
+  script asserts on to tell "found in the document" from "on screen with a mark
+  on it". **`dump-text`** writes the whole projection to a fixed file in the temp
+  directory so a script can count occurrences in the exact text the search ran
+  over.
+
+Five things that were not obvious:
+
+- **`MathBlock` and `YamlFrontMatterBlock` both derive from `CodeBlock`** (via
+  `FencedCodeBlock` in the first case). A `case CodeBlock` that did not match
+  them first would have put TeX source and YAML keys into the search — findable
+  strings that are nowhere on screen. Same shape as the `LinkInline :
+  ContainerInline` ordering: an image has to be matched before the container case
+  that would otherwise walk into its alt text.
+- **A code block's projection has no trailing newline**, and its line count is
+  the number of code lines — the fence lines are not part of `Lines`. Assumed
+  otherwise at first; the two tests that caught it now assert the exact join,
+  which is the same loop `MarkLiteCodeBlockRenderer` runs.
+- **`Detach()` has to undo on this viewer.** Detach exists for a tree about to be
+  discarded, but a reload here CARRIES realized containers over to the new model
+  — that is what keeps the screen still — so their split runs would survive into
+  a document that has renumbered its blocks, and the next `Apply` would split the
+  split. `Detach` is therefore `Clear`; on containers that really are being
+  discarded, restoring collections nobody can see is a no-op.
+- **Highlighting a newly realized block has to be posted, not done inline.**
+  Realization happens inside `MeasureOverride`, and the code panel's inner
+  `SelectableTextBlock` only appears in the visual tree once the `ScrollViewer`
+  around it has been templated — plus mutating inlines during the measure that
+  created them fights the pass that is running. The queue flushes at `Loaded`,
+  and emphasis for the current match is applied there as well as on a bounded
+  `Background` retry, so F3 to an unrealized match scrolls, realizes, highlights
+  and emphasizes across three priorities without a sleep anywhere.
+- **`VirtualBlockPanel` needed a `Recycled` event**, and it fires in one more
+  place than expected: `Load` raises it for every carried container's OLD index,
+  because after a reload that index means a different block. Carried containers
+  are deliberately NOT re-announced as `Realized` — their controls were built
+  before, and a listener that decorated them again would decorate them twice; the
+  window re-applies the search after a load instead.
+
+### Verification Plan results
+- `dotnet test` → **43 passed, 0 failed**. Thirteen new: the projection dropping
+  list markers, ordered-list numbers and task glyphs; code lines kept and the
+  language label dropped; entity decoding; front matter, display and inline maths
+  and a mermaid fence all contributing nothing; link labels kept and image alt
+  text and link destinations dropped; the comment toggle honoured in both
+  directions and the cache invalidated when it flips; cells and list items
+  separated so a term cannot straddle them; match offsets indexing into the block
+  they name; ordinals in document order and grouped per block; the line position
+  inside a fence; a footnote definition searchable in the group at the end of the
+  document; the empty term; and the 373-match pin on the stress fixture. **PASS**
+- `test-toc-search.ps1`, virtualizing viewer, `stress-large.md` → **ALL PASS (42
+  checks)**. `find station` reports **373**, equal to the source count AND to a
+  regex count over the `dump-text` projection — exact equality, not an
+  approximation. `highlighted` is **5 of 373** with 14 blocks realized, and the
+  script asserts the inequality directly. `find-next` × 5: the ordinal advances
+  each time, the target block is inside the realized window every time
+  (`0..12`, `0..13`, `2..16`, `5..18`, `8..22`), and its top sits 100 px below
+  the viewport top every time. `find-close` leaves `matches` and `highlighted`
+  both 0. On `sample-plan.md` → **ALL PASS (39, 1 skipped)** — the skip is the
+  fixture defining no footnotes. **PASS**
+- Memory, `stress-large.md`, search active on all 373 matches, collected before
+  and after: **91.8 → 93.7 MB**, so **+1.9 MB** against a budget of 8. The
+  projection is one string per block and the highlight is a handful of split runs
+  in the realized blocks. **PASS**
+- Capture at the current match (PrintWindow, 1400x1000, dark theme): the H1
+  "Kestrel **Station** Operations Manual" draws the match in the orange emphasis
+  colour with the dark current-match foreground while "Station" in the paragraph
+  below and in the next heading draw in the plain olive match colour; the find bar
+  reads `1 of 373`. After `find-next` × 2 the emphasis has moved to the "Station
+  Overview" heading, the H1 match has gone back to plain, and the bar reads `3 of
+  373`. **PASS**
+- Regression, **virtual renderer**: `test-virtual` ALL PASS (24), `test-reload`
+  ALL PASS (17), `test-gutter` ALL PASS (21), `test-html-comments` ALL PASS (9),
+  `test-tabs` ALL PASS (14). `test-html-comments` is the interesting one: it uses
+  find as its probe for "is this string on screen", so it now exercises the
+  projection's comment flag rather than a tree walk, and still agrees on all six
+  counts. **PASS**
+- Regression, **classic renderer**: `test-toc-search` ALL PASS (18, 1 skipped) on
+  `sample-plan.md` and ALL PASS (19) on `stress-large.md` — the two checks this
+  phase turned from SKIP into assertions pass on both renderers now.
+  `test-html-comments` ALL PASS (9), `test-tabs` ALL PASS (14). **PASS**
 
 ## Phase 6: Links, hover cursor, selection, copy
 Status: Not started

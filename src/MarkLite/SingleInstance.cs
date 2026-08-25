@@ -7,6 +7,9 @@ using Avalonia.Threading;
 
 namespace MarkLite;
 
+/// <summary>One debug command as it travels over the single-instance pipe.</summary>
+internal readonly record struct DebugCommand(string Text);
+
 /*  Single-instance handoff over a named pipe. The first process to create the
     pipe server becomes the primary; a later launch with a file argument
     connects as a client, sends the full path (one UTF-8 message per
@@ -16,8 +19,28 @@ namespace MarkLite;
     better a second window than a lost document. */
 internal static class SingleInstance
 {
-    private static readonly string PipeName = $"MarkLite-{Environment.UserName}";
+    /*  Per-user pipe so two Windows sessions don't fight over one instance.
+        MARKLITE_INSTANCE adds a second axis: a launch that sets it forms its
+        own single-instance group, which is how verification scripts drive a
+        MarkLite of their own while the user's copy keeps running untouched —
+        without it, a scripted launch would hand its test files to whatever
+        window the user already had open. */
+    private static readonly string PipeName = BuildPipeName();
+
+    private static string BuildPipeName()
+    {
+        var name = $"MarkLite-{Environment.UserName}";
+        return Environment.GetEnvironmentVariable("MARKLITE_INSTANCE") is { Length: > 0 } instance
+            ? $"{name}-{instance}"
+            : name;
+    }
     private static NamedPipeServerStream? _server;
+
+    /*  Messages carrying this prefix are debug commands rather than file
+        paths, which is how verification scripts drive a running instance
+        without touching keyboard or mouse. A path can never collide with it:
+        "cmd:" is not a legal Windows drive specifier. */
+    private const string CommandPrefix = "cmd:";
 
     /// <summary>Tries to claim the pipe; true means this process is the primary instance.</summary>
     internal static bool TryBecomePrimary()
@@ -41,11 +64,22 @@ internal static class SingleInstance
     /// <summary>Secondary side: hands a file path to the primary. True on success.</summary>
     internal static bool SendToPrimary(string fullPath)
     {
+        return Send(fullPath);
+    }
+
+    /// <summary>Secondary side: hands a debug command to the primary. True on success.</summary>
+    internal static bool SendToPrimary(DebugCommand command)
+    {
+        return Send(CommandPrefix + command.Text);
+    }
+
+    private static bool Send(string payload)
+    {
         try
         {
             using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
             client.Connect(timeout: 2000);
-            client.Write(Encoding.UTF8.GetBytes(fullPath));
+            client.Write(Encoding.UTF8.GetBytes(payload));
             client.Flush();
             return true;
         }
@@ -56,10 +90,11 @@ internal static class SingleInstance
     }
 
     /*  Primary side: accepts handoffs for the process lifetime. One connection
-        carries one path; the callback runs on the UI thread. Errors on a
-        single connection are logged and the accept loop continues — a broken
-        client must not kill single-instance behavior. */
-    internal static void StartServer(Action<string> onFileReceived)
+        carries one path — or one "cmd:" debug command — and the callback runs
+        on the UI thread. Errors on a single connection are logged and the
+        accept loop continues: a broken client must not kill single-instance
+        behavior. */
+    internal static void StartServer(Action<string> onFileReceived, Action<DebugCommand>? onCommand = null)
     {
         if (_server is null)
         {
@@ -83,10 +118,15 @@ internal static class SingleInstance
                         received.Write(buffer, 0, read);
                     }
 
-                    var path = Encoding.UTF8.GetString(received.ToArray()).Trim();
-                    if (path.Length > 0)
+                    var message = Encoding.UTF8.GetString(received.ToArray()).Trim();
+                    if (message.StartsWith(CommandPrefix, StringComparison.Ordinal))
                     {
-                        Dispatcher.UIThread.Post(() => onFileReceived(path));
+                        var command = new DebugCommand(message[CommandPrefix.Length..]);
+                        Dispatcher.UIThread.Post(() => onCommand?.Invoke(command));
+                    }
+                    else if (message.Length > 0)
+                    {
+                        Dispatcher.UIThread.Post(() => onFileReceived(message));
                     }
                 }
                 catch (Exception ex)

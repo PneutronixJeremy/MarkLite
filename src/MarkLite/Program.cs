@@ -41,6 +41,26 @@ internal static class Program
             mechanism entirely — a second process neither claims the pipe nor
             hands off (used by verification scripts; also handy for comparing
             builds side by side). */
+        /*  "--cmd <text>" is the scripted control surface: send one debug
+            command to the running primary instance and exit without opening a
+            window. The primary only acts on it when MARKLITE_DEBUG=1 is set
+            there, so a stray command against a normal launch does nothing.
+            Exit code 1 means the primary could not be reached. */
+        if (args.Length > 0 && args[0] == "--cmd")
+        {
+            var command = string.Join(' ', args[1..]);
+            if (SingleInstance.SendToPrimary(new DebugCommand(command)))
+            {
+                DebugLog.Write($"cmd sent: {command}");
+            }
+            else
+            {
+                DebugLog.Write($"cmd not sent (no primary instance): {command}");
+                Environment.ExitCode = 1;
+            }
+            return;
+        }
+
         var standalone = Environment.GetEnvironmentVariable("MARKLITE_STANDALONE") == "1";
         if (!standalone && !SingleInstance.TryBecomePrimary() && args.Length > 0)
         {

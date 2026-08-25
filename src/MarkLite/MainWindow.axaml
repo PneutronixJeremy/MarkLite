@@ -168,10 +168,9 @@
                 </ScrollViewer>
             </Border>
             <!--  Every tab's viewer lives here permanently; only the active one is
-                  visible. Swapping content instead would detach the outgoing viewer,
-                  and detaching a viewer that holds a mermaid diagram throws (see
-                  ActivateTab). Keeping viewers attached also preserves their scroll
-                  offsets across switches for free.  -->
+                  visible, and only the active one holds a rendered document (see
+                  ActivateTab). Viewers stay attached so their template — and the
+                  ScrollViewer the scroll hook rides on — is built only once.  -->
             <Panel Name="ViewerHost" Grid.Column="1" />
         </Grid>
     </DockPanel>

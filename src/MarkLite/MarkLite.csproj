@@ -52,13 +52,19 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
     <!-- Markdig-based rendering stack (replaces Markdown.Avalonia.Tight; spike-proven under AOT). -->
     <PackageReference Include="MarkView.Avalonia" Version="12.2.1" />
-    <PackageReference Include="MarkView.Avalonia.Mermaid" Version="12.2.1" />
     <PackageReference Include="MarkView.Avalonia.Math" Version="12.2.1" />
+    <!-- Mermaid: the diagram engine and the SVG control directly, without
+         MarkView.Avalonia.Mermaid. Its block renderer is vendored (and fixed)
+         in Rendering/MermaidFenceRenderer.cs, so the package itself would only
+         add a renderer that crashes on the second detach. Versions match what
+         MarkView.Avalonia.Mermaid 12.2.1 depended on. -->
+    <PackageReference Include="Mermaider" Version="0.12.2" />
+    <PackageReference Include="Svg.Controls.Skia.Avalonia" Version="12.0.0.15" />
     <!-- Syntax highlighting: pure managed regex engine, AOT/trim safe. Chosen over the
          TextMate satellite package, which costs ~19 MB of grammar assets in the exe. -->
     <PackageReference Include="ColorCode.Core" Version="2.0.15" />
     <!-- Install/update framework (Squirrel successor); packs via the vpk CLI,
-         updates from GitHub Releases. Verified AOT/trim clean in Phase 11. -->
+         updates from GitHub Releases. Verified AOT/trim clean. -->
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 

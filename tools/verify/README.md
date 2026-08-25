@@ -31,8 +31,10 @@ Ground rules:
   `Process.WorkingSet64` via `dump-state`.
 - **`test-tabs.ps1 [-Exe path] [-Files a.md,b.md,c.md]`** — asserts that a
   secondary launch hands its file to the running instance, that every file gets
-  a tab, that each tab keeps its own scroll offset across switches, and that
-  closing every tab returns to the welcome page.
+  a tab, that each tab keeps its own scroll offset across switches, that
+  leaving a tab drops its rendered tree, that five round-trips through a
+  document holding a Mermaid diagram raise nothing, and that closing every tab
+  returns to the welcome page. Prints the slowest switch render time.
 - **`test-html-comments.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** —
   View > Show HTML comments. Uses find-in-document as the probe (it searches
   rendered text, so a findable string is on screen): comments findable with the

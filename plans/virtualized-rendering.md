@@ -506,24 +506,24 @@ necessary. They now render, under a toggle that defaults to on.
   committed; `docs/` screenshots get refreshed in Phase 7).
 
 ## Phase 2: Active-document-only rendering + vendored Mermaid renderer
-Status: Not started
+Status: Complete
 
 Only the active tab holds a rendered tree; every other tab keeps text and a
 scroll anchor. Memory tracks the active document instead of the sum of tabs.
 Independent of the virtualization work, ships on the existing viewer.
 
-- [ ] `ActivateTab`: on deactivation save `SavedScrollY`, then set
+- [x] `ActivateTab`: on deactivation save `SavedScrollY`, then set
   `Viewer.Markdown = null` (drops the tree, viewer stays attached and
   hidden). On activation always `RenderTab(tab, tab.CurrentText,
   tab.SavedScrollY)`. Remove `PendingText` and the deferred-render branches
   (`RerenderAllTabs`, `OnTabFileChanged` just update `CurrentText` for
   inactive tabs). Welcome viewer: `Markdown = null` while any tab is open,
   re-set on `ShowWelcome`.
-- [ ] Log `tab switched to '<name>'; render <ms> ms` (Stopwatch around the
+- [x] Log `tab switched to '<name>'; render <ms> ms` (Stopwatch around the
   render + post-layout pass) for the switch-cost table.
-- [ ] `DocumentTab`: drop `PendingText`; keep `Search`, `TocEntries`,
+- [x] `DocumentTab`: drop `PendingText`; keep `Search`, `TocEntries`,
   `HeadingControls` (rebuilt by the render path as today).
-- [ ] Vendor the Mermaid block renderer: `src/MarkLite/Rendering/
+- [x] Vendor the Mermaid block renderer: `src/MarkLite/Rendering/
   MermaidFenceRenderer.cs` adapted from MarkView.Avalonia.Mermaid
   `MermaidBlockRenderer` (MIT; header notice + `THIRD-PARTY-NOTICES.md`
   entry with the MarkView copyright line and license text). Fixes: single
@@ -532,10 +532,10 @@ Independent of the virtualization work, ships on the existing viewer.
   cancellation on detach. `MarkLiteCodeBlockRenderer` calls it directly for
   `mermaid` fences; `viewer.UseMermaid()` removed (renderer still uses the
   package's Mermaider/SVG types — confirm AOT publish keeps them).
-- [ ] Delete the "hidden-but-attached because of the Mermaid crash" comment
+- [x] Delete the "hidden-but-attached because of the Mermaid crash" comment
   and any code that existed only for it; document the new invariant on
   `ActivateTab` (one live tree; switching costs a render).
-- [ ] Update `tools/verify/test-tabs.ps1` for the new log lines; add a
+- [x] Update `tools/verify/test-tabs.ps1` for the new log lines; add a
   mermaid tab to its fixture set (sample.md has a diagram) and switch away
   and back 5 times.
 
@@ -552,7 +552,103 @@ Independent of the virtualization work, ships on the existing viewer.
   the tab): new content visible, log shows one render, no stale banner.
 
 ### Phase Summary
-_(write when phase completes)_
+One live document per window. Every other open tab is now text plus a scroll
+offset; the control tree belongs to whichever tab is on screen.
+
+- **`ActivateTab` is the invariant's home.** Leaving a tab: save `ScrollY`,
+  hide the viewer, `Search.Detach()`, `Viewer.Markdown = null`, log
+  `tab scroll saved … ; tree dropped`. Arriving: the viewer is empty by
+  definition, so activation always calls `RenderTab(tab, tab.CurrentText,
+  tab.SavedScrollY)`, which restores the offset and rebuilds TOC and search on
+  the way. The welcome viewer follows the same rule — its tree is dropped when
+  a document takes the window and rebuilt in `ShowWelcome`.
+- **`PendingText` is gone**, and with it every deferred-render branch.
+  `CurrentText` is the single source of truth: a background reload writes it
+  and stops (`reload stored (inactive tab)`), `RerenderAllTabs` only touches
+  what is on screen, and `RenderTab` on a non-active tab is a logged no-op.
+  A failed open now also stores its error page in `CurrentText` rather than
+  assigning `Viewer.Markdown` once — otherwise the tab came back blank.
+- **Viewers still stay attached to the host, hidden.** Not for the Mermaid
+  crash any more (that is fixed) but because the template — and the
+  `PART_ScrollViewer` the scroll hook rides on — is built once on first
+  attachment.
+- **Log-line ordering is load-bearing for the scripts**: `tab switched to
+  '<name>'; render <ms> ms` is posted at `Background` priority from
+  `RenderTab`'s `afterLayout`, so it lands *after* the scroll restore's own
+  second pass. `tab switched` is therefore reliably the last line of a switch,
+  and `Switch-Tab` in `test-tabs.ps1` waits on it. Waiting on the command
+  acknowledgement alone reads state mid-render.
+- **Vendored `Rendering/MermaidFenceRenderer.cs`** (MIT, MarkView copyright in
+  the header and in `THIRD-PARTY-NOTICES.md` under a new "Vendored source"
+  section). Only the mermaid path is copied; MarkLite's own code renderer keeps
+  every other fence and calls `MermaidFenceRenderer.Write` directly. Three
+  changes against upstream:
+  - attach and detach are both hooked on the **visual** tree, so they pair.
+    Upstream registered a fresh `DetachedFromLogicalTree` handler inside each
+    `AttachedToVisualTree`, and every one of them cancelled and disposed the
+    same `CancellationTokenSource` — the second detach threw
+    `ObjectDisposedException`, which under this phase's drop-and-rebuild is
+    certain rather than rare;
+  - the token source is nulled after disposal, and a diagram whose render was
+    cancelled by a detach restarts on re-attach;
+  - the `Application.PropertyChanged` (theme) subscription is taken on attach
+    and released on detach, instead of taken at render time and released only
+    from inside a handler that a diagram with no `ScrollViewer` ancestor never
+    reached.
+  Handlers are held in explicit delegate locals: a local function converted to
+  a delegate at two call sites is not guaranteed to produce equal instances,
+  and `-=` removes only an equal one.
+- **`MarkView.Avalonia.Mermaid` is no longer referenced.** The package existed
+  only for that renderer, so the csproj now takes `Mermaider` 0.12.2 and
+  `Svg.Controls.Skia.Avalonia` 12.0.0.15 directly — the versions it depended
+  on. AOT publish is clean and diagrams render.
+- **Switch cost is small on ordinary documents** (11 ms worst case across
+  sample.md and sample-plan.md) and is the whole reason the stress fixture's
+  numbers below are still large: re-rendering 528 KB on every activation is
+  what Phase 3 removes.
+
+### Verification Plan results
+- `build/publish.ps1` exit 0, **0 warnings**. **PASS**
+- `test-tabs.ps1` → **ALL PASS (14 checks)**, including `leaving a tab drops
+  its rendered tree`, tab 1's offset restored to 1125.3 px, and **five
+  round-trips through the mermaid document with no exception** (`ObjectDisposed`
+  never appears — the same loop against the packaged renderer is what used to
+  throw). Slowest switch render printed: **11 ms**. **PASS**
+- Regression: `test-toc-search.ps1` ALL PASS (12) on sample-plan.md and ALL
+  PASS (12) on stress-large.md (308 headings, `find station` = 373 both sides);
+  `test-html-comments.ps1` ALL PASS (9). **PASS**
+- Memory, published exe, 1400x1000 (all three fixtures, stress-large.md ending
+  as the active tab):
+
+  | Stage | Tabs | Working set (MB) | Managed (MB) |
+  |---|---:|---:|---:|
+  | first render (sample.md) | 1 | 73.8 | 6.4 |
+  | opened 2 tabs | 2 | 76.4 | 10.7 |
+  | opened 3 tabs (stress active) | 3 | 381.8 | 293.4 |
+  | after scroll-through | 3 | 321.7 | 242.1 |
+  | after cycling tabs twice | 3 | 471.7 | 319.9 |
+  | after gc | 3 | 317.6 | 241.3 |
+
+  Single heaviest tab on the same build: 314.8 MB first render, **313.5 MB
+  after gc**. So three tabs settle at **+4.1 MB** over the heaviest one alone
+  (plan allows +10) and after cycling twice at the same +4.1 MB (allows +5).
+  **PASS** — with the caveat that the raw `after cycling` row (471.7 MB) is a
+  transient: activation re-renders the whole 528 KB document, and the spike
+  only comes back down at the next collect. Phase 3 removes the spike by not
+  building the whole tree in the first place.
+- The stress fixture's single-tab figure has grown against the Phase 1
+  baseline (313.5 vs 303.0 MB after gc). Not this phase's doing: Phase 1A's
+  clear-then-set re-render fix landed after that baseline and stress-large.md
+  was never re-measured. Recorded here so Phase 3's comparison starts from a
+  real number.
+- Switch cost on sample-plan.md: **11 ms** (plan allows < 250). **PASS**
+- Scroll restore after switch away/back: 1125.3 px saved, 1125.3 px restored
+  (±1 allowed). **PASS**
+- Live reload of an inactive tab (one-off script, not committed — Phase 4's
+  `test-reload.ps1` is where this becomes permanent): rewriting the file logs
+  `reload stored (inactive tab)` and renders nothing; activating the tab
+  renders **exactly once**; the new text is findable, the old text is not; no
+  stale banner. **8/8 PASS**
 
 ## Phase 3: Virtualized host — model, block panel, realization
 Status: Not started

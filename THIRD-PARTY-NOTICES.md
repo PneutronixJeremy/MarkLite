@@ -8,12 +8,23 @@ governed by its own license, available at the linked upstream project.
 | Component | License | Source |
 |-----------|---------|--------|
 | Avalonia (+ Desktop, Themes.Fluent) | MIT | https://github.com/AvaloniaUI/Avalonia |
-| MarkView.Avalonia (+ Mermaid, Math) | MIT | https://github.com/Kryptos-FR/MarkView.Avalonia |
+| MarkView.Avalonia (+ Math) | MIT | https://github.com/Kryptos-FR/MarkView.Avalonia |
 | Markdig (transitive) | BSD-2-Clause | https://github.com/xoofx/markdig |
-| Mermaider (transitive) | MIT | https://github.com/Kryptos-FR/Mermaider |
+| Mermaider | MIT | https://github.com/Kryptos-FR/Mermaider |
+| Svg.Controls.Skia.Avalonia | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | CSharpMath (transitive) | MIT | https://github.com/verybadcat/CSharpMath |
 | ColorCode.Core | MIT | https://github.com/CommunityToolkit/ColorCode-Universal |
 | SkiaSharp / HarfBuzzSharp (native libs shipped beside the exe) | MIT | https://github.com/mono/SkiaSharp |
+
+## Vendored source
+
+`src/MarkLite/Rendering/MermaidFenceRenderer.cs` is adapted from the
+`MermaidBlockRenderer` of **MarkView.Avalonia.Mermaid** — Copyright (c) Nicolas
+Musset, MIT license, https://github.com/Kryptos-FR/MarkView.Avalonia. MarkLite
+carries its own copy because the packaged renderer registers a detach handler
+per attach and cancels an already-disposed `CancellationTokenSource` on the
+second detach; the file header records the fixes. The MIT license text is
+available at https://opensource.org/licenses/MIT.
 
 ## Bundled fonts (`src/MarkLite/Assets/Fonts/`)
 

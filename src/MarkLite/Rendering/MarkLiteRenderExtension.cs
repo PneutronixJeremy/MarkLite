@@ -36,14 +36,11 @@ internal sealed class MarkLiteRenderExtension : IMarkViewExtension
         renderer.ReplaceOrAdd<MarkView.Avalonia.Rendering.Inlines.TaskListRenderer>(
             new SilentTaskListRenderer());
 
-        /*  The code renderer must sit AHEAD of MermaidBlockRenderer, which
-            broadly accepts every FencedCodeBlock and renders non-mermaid
-            fences itself (plain, no label/highlighting). Registration order in
-            MainWindow puts Mermaid before this extension, so the front slot
-            here lands ahead of it; mermaid fences are forwarded back to it
-            from MarkLiteCodeBlockRenderer.Write. The stock CodeBlockRenderer
-            is removed outright. MathExtension re-fronts its own narrow
-            renderer regardless of this insert (its documented behavior). */
+        /*  MarkLite owns every code block: the stock CodeBlockRenderer is
+            removed outright and ours takes the front slot, forwarding mermaid
+            fences to MermaidFenceRenderer itself. MathExtension re-fronts its
+            own narrow renderer regardless of this insert (its documented
+            behavior). */
         var stock = renderer.ObjectRenderers.Find<CodeBlockRenderer>();
         if (stock is not null)
         {
@@ -174,27 +171,19 @@ internal sealed class ProminentListRenderer : AvaloniaObjectRenderer<ListBlock>
               ScrollViewer (horizontal) > SelectableTextBlock (colored Runs) ]
     Highlighting uses ColorCode over the whole block at render time — full
     multi-line lexing state, unlike MarkView's per-line ICodeHighlighter slot.
-    Mermaid fences never reach this renderer: the Mermaid extension package
-    claims them first. */
+    Mermaid fences are handed to MermaidFenceRenderer from here. */
 internal sealed class MarkLiteCodeBlockRenderer : AvaloniaObjectRenderer<CodeBlock>
 {
     protected override void Write(AvaloniaRenderer renderer, CodeBlock obj)
     {
-        var language = obj is FencedCodeBlock fenced ? fenced.Info?.Trim() ?? string.Empty : string.Empty;
+        var fenced = obj as FencedCodeBlock;
+        var language = fenced?.Info?.Trim() ?? string.Empty;
 
-        /*  Mermaid fences belong to the Mermaid package's renderer, which sits
-            behind this one in the renderer list (see Register above). */
-        if (string.Equals(language, "mermaid", System.StringComparison.OrdinalIgnoreCase))
+        if (fenced is not null
+            && string.Equals(language, "mermaid", System.StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var other in renderer.ObjectRenderers)
-            {
-                if (other is MarkView.Avalonia.Mermaid.MermaidBlockRenderer mermaidRenderer)
-                {
-                    ((Markdig.Renderers.IMarkdownObjectRenderer)mermaidRenderer).Write(renderer, obj);
-                    return;
-                }
-            }
-            // Mermaid package absent: fall through and render as a plain code block.
+            MermaidFenceRenderer.Write(renderer, fenced);
+            return;
         }
 
         var code = new System.Text.StringBuilder();

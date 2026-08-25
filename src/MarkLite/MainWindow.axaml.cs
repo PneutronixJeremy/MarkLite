@@ -438,25 +438,16 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Re-renders every tab (active now, others on activation) and the welcome page.</summary>
+    /*  Re-renders whatever is on screen. Inactive tabs need nothing: they hold
+        no control tree, and the render they get on activation already picks up
+        the new theme, font or comment setting. */
     private void RerenderAllTabs()
     {
-        foreach (var tab in _tabs)
+        if (_activeTab is { CurrentText: not null } active)
         {
-            if (tab.CurrentText is null)
-            {
-                continue;
-            }
-            if (tab == _activeTab)
-            {
-                RenderTab(tab, tab.CurrentText, tab.ScrollY);
-            }
-            else
-            {
-                tab.PendingText = tab.CurrentText;
-            }
+            RenderTab(active, active.CurrentText, active.ScrollY);
         }
-        if (_welcomeViewer is not null)
+        if (_welcomeViewer is { IsVisible: true })
         {
             _welcomeViewer.Markdown = null;
             _welcomeViewer.Markdown = WelcomeMarkdown;
@@ -508,12 +499,8 @@ public partial class MainWindow : Window
         viewer.IsVisible = false;
         _viewerHost.Children.Add(viewer);
 
-        /*  Registration order is load-bearing: UseMermaid front-inserts a
-            renderer that broadly claims every fenced block, and MarkLite's
-            extension must register after it so its own code renderer lands
-            ahead (it forwards mermaid fences back). UseMath re-fronts its
-            narrow math renderer regardless. */
-        viewer.UseMermaid();
+        /*  MarkLite's extension owns every code block, mermaid fences
+            included. UseMath re-fronts its narrow math renderer regardless. */
         viewer.Extensions.Add(RenderExtension);
         viewer.UseMath();
         viewer.LinkClicked += (_, e) => _hyperlinkCommand.Execute(e.Url);
@@ -585,7 +572,6 @@ public partial class MainWindow : Window
 
             tab.FilePath = fullPath;
             tab.CurrentText = text;
-            tab.PendingText = null;
             tab.Watcher.Watch(fullPath);
             SetTabStale(tab, null);
             UpdateTabHeader(tab);
@@ -595,11 +581,13 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             tab.FilePath = null;
-            tab.CurrentText = null;
-            tab.PendingText = null;
+            /*  The error page is the tab's content, not a one-off assignment:
+                a tab holds no tree while inactive, so it has to be rendered
+                again — from CurrentText — every time the tab comes back. */
+            tab.CurrentText = $"# Cannot open file\n\n`{path}`\n\n{ex.Message}";
             tab.Watcher.StopWatching();
             SetTabStale(tab, null);
-            tab.Viewer.Markdown = $"# Cannot open file\n\n`{path}`\n\n{ex.Message}";
+            RenderTab(tab, tab.CurrentText);
 
             var attemptedName = Path.GetFileName(path);
             UpdateTabHeader(tab,
@@ -620,13 +608,16 @@ public partial class MainWindow : Window
         }
     }
 
-    /*  Tab switching hides the outgoing viewer instead of removing it from the
-        host. Removing it would detach it from the logical tree, and the Mermaid
-        package registers a DetachedFromLogicalTree handler that cancels an
-        already-disposed CancellationTokenSource — so the second detach of any
-        viewer holding a mermaid diagram throws ObjectDisposedException and
-        aborts the switch halfway. Hidden-but-attached also keeps each viewer's
-        scroll offset alive, so switching needs no offset restore at all. */
+    /*  ONE LIVE DOCUMENT PER WINDOW. Only the active tab holds a rendered
+        control tree; deactivating a tab drops its tree (Markdown = null) and
+        keeps nothing but the text and a scroll offset, so the window's working
+        set tracks the document being read rather than the sum of everything
+        open. The price is that switching costs a render — measured in the
+        "tab switched" log line.
+
+        The viewer itself stays in the host across switches (hidden, not
+        removed): its template, and with it the ScrollViewer the scroll hook
+        rides on, is built once on first attachment. */
     private void ActivateTab(DocumentTab tab)
     {
         if (_activeTab == tab)
@@ -639,11 +630,14 @@ public partial class MainWindow : Window
             _activeTab.SavedScrollY = _activeTab.ScrollY;
             _activeTab.StripItem.Classes.Remove("TabItemActive");
             _activeTab.Viewer.IsVisible = false;
-            DebugLog.Write($"tab scroll saved {_activeTab.SavedScrollY:F1} for '{_activeTab.DisplayName}'");
+            _activeTab.Search.Detach();
+            _activeTab.Viewer.Markdown = null;
+            DebugLog.Write($"tab scroll saved {_activeTab.SavedScrollY:F1} for '{_activeTab.DisplayName}'; tree dropped");
         }
         if (_welcomeViewer is not null)
         {
             _welcomeViewer.IsVisible = false;
+            _welcomeViewer.Markdown = null;
         }
 
         _activeTab = tab;
@@ -657,62 +651,27 @@ public partial class MainWindow : Window
         _findBox.Text = tab.SearchTerm;
         _suppressFindEvents = false;
 
-        DebugLog.Write($"tab switched to '{tab.DisplayName}'; scroll {tab.SavedScrollY:F1}");
-
-        if (tab.PendingText is not null)
+        if (tab.CurrentText is not null)
         {
-            /*  Content changed (reload/theme) while this tab was inactive; a
-                detached viewer cannot lay out, so the render was deferred to
-                now. The render pipeline also refreshes TOC and search. */
-            tab.CurrentText = tab.PendingText;
-            RenderTab(tab, tab.PendingText, tab.SavedScrollY);
+            /*  The incoming tab has no control tree — the switch away dropped
+                it — so activation always renders. The render pipeline restores
+                the offset and refreshes TOC and search with it. */
+            var timer = Stopwatch.StartNew();
+            RenderTab(tab, tab.CurrentText, tab.SavedScrollY, afterLayout: () =>
+                /*  Posted, not written here: the scroll restore's own second
+                    pass is already queued at this priority, so this lands
+                    after it and "tab switched" is reliably the LAST line of a
+                    switch — which is what scripts wait on. */
+                Dispatcher.UIThread.Post(
+                    () => DebugLog.Write($"tab switched to '{tab.DisplayName}'; render {timer.ElapsedMilliseconds} ms"),
+                    DispatcherPriority.Background));
         }
         else
         {
+            DebugLog.Write($"tab switched to '{tab.DisplayName}'; nothing loaded");
             RefreshTocPanel();
-            if (_findVisible && tab.SearchTerm.Length > 0)
-            {
-                RunSearch(scrollToCurrent: false);
-            }
-            else
-            {
-                UpdateFindCount();
-            }
-            RestoreActiveTabScroll();
+            UpdateFindCount();
         }
-    }
-
-    /*  Viewers stay attached across switches, so the offset normally survives
-        on its own; this pushes the saved value back anyway, because a viewer
-        that was hidden skipped layout and can report a stale extent on the
-        first pass. Two passes for that reason: the Loaded-priority set may be
-        clamped, the Background one runs after layout has settled. Both are
-        no-ops when the offset never moved. */
-    private void RestoreActiveTabScroll()
-    {
-        var tab = _activeTab;
-        if (tab is null)
-        {
-            return;
-        }
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (_activeTab != tab)
-            {
-                return;
-            }
-            tab.ScrollY = tab.SavedScrollY;
-            Dispatcher.UIThread.Post(() =>
-            {
-                if (_activeTab != tab)
-                {
-                    return;
-                }
-                tab.ScrollY = tab.SavedScrollY;
-                UpdateCurrentSection();
-                DebugLog.Write($"tab scroll restored {tab.ScrollY:F1}");
-            }, DispatcherPriority.Background);
-        }, DispatcherPriority.Loaded);
     }
 
     private void CloseTab(DocumentTab tab)
@@ -750,9 +709,13 @@ public partial class MainWindow : Window
         if (_welcomeViewer is null)
         {
             _welcomeViewer = CreateViewer();
-            _welcomeViewer.Markdown = WelcomeMarkdown;
             _viewerHost.Children.Add(_welcomeViewer);
         }
+        /*  The welcome page gives its tree back whenever a document takes the
+            window (see ActivateTab), so it is rendered on the way in, not
+            once at creation. */
+        _welcomeViewer.Markdown = null;
+        _welcomeViewer.Markdown = WelcomeMarkdown;
         _welcomeViewer.IsVisible = true;
         Title = "MarkLite";
         SetStaleBanner(null);
@@ -827,8 +790,9 @@ public partial class MainWindow : Window
             }
             else
             {
-                tab.PendingText = text;
-                DebugLog.Write($"reload deferred (inactive tab): {tab.FilePath}");
+                /*  Nothing to re-render: the tab holds no tree. The new text
+                    is already in CurrentText and is rendered on activation. */
+                DebugLog.Write($"reload stored (inactive tab): {tab.FilePath}");
             }
             SetTabStale(tab, null);
         }
@@ -847,19 +811,19 @@ public partial class MainWindow : Window
         pass that realizes the new controls, restore the scroll offset (the
         viewer resets it to 0 on every content set), rebuild TOC data and
         re-apply search (only possible once controls are in the visual tree).
-        Inactive tabs cannot lay out, so their render is parked in PendingText
-        until activation. */
+        Only the active tab has a viewer with a tree, so a render for any other
+        tab is dropped — its text is already in CurrentText and gets rendered
+        when the tab is activated. */
     private void RenderTab(DocumentTab tab, string text, double restoreScrollY = 0, Action? afterLayout = null)
     {
         if (tab != _activeTab)
         {
-            tab.PendingText = text;
+            DebugLog.Write($"render skipped (inactive tab): '{tab.DisplayName}'");
             return;
         }
 
         MarkActivity();
         tab.Search.Detach();
-        tab.PendingText = null;
         /*  Markdown is a styled property: assigning the value it already holds
             raises no change and rebuilds nothing. A re-render with UNCHANGED
             text is exactly what a theme, font or comment-visibility switch
@@ -868,18 +832,21 @@ public partial class MainWindow : Window
         tab.Viewer.Markdown = text;
         Dispatcher.UIThread.Post(() =>
         {
-            /*  Two-pass restore, same reason as RestoreActiveTabScroll: at
-                Loaded priority the fresh tree may report a smaller extent and
-                the first set gets clamped. */
+            /*  Two-pass restore: at Loaded priority the fresh tree may still
+                report a smaller extent, and the first set gets clamped to it.
+                The Background pass runs once layout has settled. */
             if (restoreScrollY > 0)
             {
                 tab.ScrollY = restoreScrollY;
                 Dispatcher.UIThread.Post(() =>
                 {
-                    if (tab == _activeTab)
+                    if (tab != _activeTab)
                     {
-                        tab.ScrollY = restoreScrollY;
+                        return;
                     }
+                    tab.ScrollY = restoreScrollY;
+                    UpdateCurrentSection();
+                    DebugLog.Write($"tab scroll restored {tab.ScrollY:F1} for '{tab.DisplayName}'");
                 }, DispatcherPriority.Background);
             }
             RebuildTocData(tab);

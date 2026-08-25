@@ -6,18 +6,17 @@
     Drives the same code paths the sidebar buttons and the find bar use, over
     the debug command channel. Two halves:
 
-      TOC     - "toc <n>" must scroll the document and make <n> the current
-                section; under the virtualizing viewer it must also land the
-                heading 8 px below the viewport top, which is only knowable
-                after the panel has corrected its own estimate. "anchor <slug>"
-                must land on that heading, and on a footnote when the document
-                has any.
+      TOC     - "toc <n>" must scroll the document, make <n> the current
+                section, and land the heading 8 px below the viewport top,
+                which is only knowable after the panel has corrected its own
+                estimate. "anchor <slug>" must land on that heading, and on a
+                footnote when the document has any.
       Search  - "find <term>" must report the same number of matches as a
                 plain text count over the source file, "find-next" must advance
-                the current match, and under the virtualizing viewer each match
-                stepped to must end up realized, highlighted and on screen -
-                the count comes from the parsed document, so it does not care
-                what is rendered, but the HIGHLIGHT does.
+                the current match, and each match stepped to must end up
+                realized, highlighted and on screen - the count comes from the
+                parsed document, so it does not care what is rendered, but the
+                HIGHLIGHT does.
 
     Two counts are compared, and they mean different things. The count over the
     SOURCE file is an approximation by nature - the app searches what a reader
@@ -66,8 +65,6 @@ try {
     [void](Start-MarkLite -File $File -LogName 'test-toc-search')
 
     # ---------------------------------------------------------------- TOC
-    $virtual = $env:MARKLITE_VIRTUAL -eq '1'
-
     $state = Get-State
     Assert-True ($state.tocCount -gt 0) "contents built ($($state.tocCount) headings)"
 
@@ -95,23 +92,19 @@ try {
     Assert-True ((Get-ActiveTabState $state).scrollY -gt 0) "toc $target scrolled the document"
     Assert-Equal $target $state.tocIndex "toc $target became the current section"
 
-    if ($virtual) {
-        #  ScrollToHeading asks for the block top minus 8 px, so the heading
-        #  ends up exactly that far below the viewport top once the estimates
-        #  above it have been corrected.
-        $delta = $state.targetBlockOffset - (Get-ActiveTabState $state).scrollY
-        Assert-Near 8 $delta 2 "toc $target left the heading 8 px below the viewport top"
-    }
+    #  ScrollToHeading asks for the block top minus 8 px, so the heading ends
+    #  up exactly that far below the viewport top once the estimates above it
+    #  have been corrected.
+    $delta = $state.targetBlockOffset - (Get-ActiveTabState $state).scrollY
+    Assert-Near 8 $delta 2 "toc $target left the heading 8 px below the viewport top"
 
     #  A jump deep into a long document is the interesting one: everything
     #  above the target is still an estimate when the first hop is taken.
     if ($state.tocCount -gt 250) {
         $deep = Invoke-TocJump -Index 250
         Assert-Equal 250 $deep.tocIndex 'toc 250 became the current section'
-        if ($virtual) {
-            $delta = $deep.targetBlockOffset - (Get-ActiveTabState $deep).scrollY
-            Assert-Near 8 $delta 2 'toc 250 left the heading 8 px below the viewport top'
-        }
+        $delta = $deep.targetBlockOffset - (Get-ActiveTabState $deep).scrollY
+        Assert-Near 8 $delta 2 'toc 250 left the heading 8 px below the viewport top'
     }
 
     [void](Send-Cmd 'scroll 0')
@@ -139,10 +132,8 @@ try {
         $state = Get-State
         $tab = Get-ActiveTabState $state
         Assert-True ($tab.scrollY -gt 0) "anchor #fn-1 scrolled to the footnotes ($([int]$tab.scrollY) px)"
-        if ($virtual) {
-            Assert-Equal ($state.blocks - 1) $state.targetBlock `
-                'the footnote anchor resolved to the footnote group at the end of the document'
-        }
+        Assert-Equal ($state.blocks - 1) $state.targetBlock `
+            'the footnote anchor resolved to the footnote group at the end of the document'
     } else {
         Write-Skip "$([IO.Path]::GetFileName($File)) defines no footnotes - fn-1 anchor not exercised"
     }
@@ -166,49 +157,43 @@ try {
     Assert-Equal 0 $state.matchIndex 'find starts on the first match'
     Assert-Equal $expected $state.matches 'dump-state agrees on the match count'
 
-    if ($virtual) {
-        <#  Exact equality, not an approximation: dump-text writes the model's
-            own plain-text projection - the very text the search matched
-            against - so a difference here is the search and the projection
-            disagreeing, not markdown syntax getting in the way. #>
-        [void](Send-Cmd 'dump-text')
-        $dump = Join-Path ([IO.Path]::GetTempPath()) 'marklite-blocktext.txt'
-        Assert-True (Test-Path -LiteralPath $dump) 'dump-text wrote the block projection'
-        $projected = ([regex]::Matches(
-            [IO.File]::ReadAllText($dump), [regex]::Escape($Term), 'IgnoreCase')).Count
-        Assert-Equal $projected $reported "find '$Term' equals the projection's own count"
+    <#  Exact equality, not an approximation: dump-text writes the model's own
+        plain-text projection - the very text the search matched against - so a
+        difference here is the search and the projection disagreeing, not
+        markdown syntax getting in the way. #>
+    [void](Send-Cmd 'dump-text')
+    $dump = Join-Path ([IO.Path]::GetTempPath()) 'marklite-blocktext.txt'
+    Assert-True (Test-Path -LiteralPath $dump) 'dump-text wrote the block projection'
+    $projected = ([regex]::Matches(
+        [IO.File]::ReadAllText($dump), [regex]::Escape($Term), 'IgnoreCase')).Count
+    Assert-Equal $projected $reported "find '$Term' equals the projection's own count"
 
-        Assert-True ($state.highlighted -gt 0) `
-            "the current match is highlighted ($($state.highlighted) of $($state.matches) on screen)"
-        if ($state.realizedBlocks -lt $state.blocks) {
-            #  The count is the document's; the highlight can only be the
-            #  realized part of it. Both at once is the whole point.
-            Assert-True ($state.highlighted -lt $state.matches) `
-                'matches outside the realized window are counted but not highlighted'
-        } else {
-            Write-Skip "$([IO.Path]::GetFileName($File)) is small enough to realize whole - no unhighlighted matches to check"
-        }
-
-        #  Search state is a match list plus split runs in the realized blocks;
-        #  neither should register on the working set.
-        [void](Send-Cmd 'gc')
-        $searching = Get-State
-        Assert-True (($searching.workingSetMb - $idle.workingSetMb) -lt 8) `
-            ("search adds under 8 MB ({0:N1} -> {1:N1} MB)" -f $idle.workingSetMb, $searching.workingSetMb)
+    Assert-True ($state.highlighted -gt 0) `
+        "the current match is highlighted ($($state.highlighted) of $($state.matches) on screen)"
+    if ($state.realizedBlocks -lt $state.blocks) {
+        #  The count is the document's; the highlight can only be the realized
+        #  part of it. Both at once is the whole point.
+        Assert-True ($state.highlighted -lt $state.matches) `
+            'matches outside the realized window are counted but not highlighted'
+    } else {
+        Write-Skip "$([IO.Path]::GetFileName($File)) is small enough to realize whole - no unhighlighted matches to check"
     }
 
-    <#  Stepping. Each step must advance the ordinal, and under the
-        virtualizing viewer must also leave the target block realized and
-        within the viewport - a match the reader cannot see has not been
-        found for them. #>
+    #  Search state is a match list plus split runs in the realized blocks;
+    #  neither should register on the working set.
+    [void](Send-Cmd 'gc')
+    $searching = Get-State
+    Assert-True (($searching.workingSetMb - $idle.workingSetMb) -lt 8) `
+        ("search adds under 8 MB ({0:N1} -> {1:N1} MB)" -f $idle.workingSetMb, $searching.workingSetMb)
+
+    <#  Stepping. Each step must advance the ordinal, and must also leave the
+        target block realized and within the viewport - a match the reader
+        cannot see has not been found for them. #>
     $steps = [Math]::Min(5, $expected - 1)
     foreach ($step in 1..$steps) {
         [void](Send-Cmd 'find-next')
         $state = Get-State
         Assert-Equal $step $state.matchIndex "find-next advanced to match $($step + 1)"
-        if (-not $virtual) {
-            continue
-        }
         Assert-True ($state.highlighted -gt 0) "match $($step + 1) is highlighted"
         Assert-True ($state.targetBlock -ge $state.firstRealized `
                 -and $state.targetBlock -le $state.lastRealized) `

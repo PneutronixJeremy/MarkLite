@@ -187,12 +187,6 @@ function Start-MarkLite {
     $env:MARKLITE_INSTANCE = 'verify'
     Remove-Item Env:MARKLITE_STANDALONE -ErrorAction SilentlyContinue
 
-    #  MARKLITE_VIRTUAL is inherited from the caller's shell so both renderers
-    #  can be measured with the same scripts. Reported, never assumed: a memory
-    #  table that does not say which renderer produced it is worthless.
-    $renderer = if ($env:MARKLITE_VIRTUAL -eq '1') { 'virtualized' } else { 'classic' }
-    Write-Host "  renderer: $renderer" -ForegroundColor DarkGray
-
     foreach ($stray in @(Get-Process -Name 'MarkLite' -ErrorAction SilentlyContinue)) {
         if ($stray.Path -eq $script:Exe) {
             #  Left over from an interrupted run of these scripts - the user's

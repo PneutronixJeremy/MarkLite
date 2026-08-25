@@ -89,6 +89,14 @@ internal sealed class VirtualMarkdownView : MarkdownViewer
     /// <summary>What the reader has selected, addressed by block and character.</summary>
     public DocumentSelection Selection => _selection;
 
+    /// <summary>The ScrollViewer the document scrolls in. Null until the template has been
+    /// applied, which happens on first attachment to the visual tree.</summary>
+    public ScrollViewer? Scroller => _panel.Scroller;
+
+    /// <summary>Raised whenever the reader scrolls. Rides the template's ScrollViewer, so it
+    /// starts firing only once that exists; callers must tolerate the gap.</summary>
+    public event EventHandler? ViewScrollChanged;
+
     /// <summary>The parsed document: blocks, headings, anchors, table of contents.</summary>
     public MarkdownDocumentModel? Model { get; private set; }
 
@@ -165,8 +173,25 @@ internal sealed class VirtualMarkdownView : MarkdownViewer
     protected override void OnApplyTemplate(TemplateAppliedEventArgs e)
     {
         base.OnApplyTemplate(e);
+
+        /*  Re-templating (a theme switch does it) hands over a different
+            ScrollViewer, so the old subscription is dropped rather than left
+            firing from a control nothing scrolls any more. */
+        if (_panel.Scroller is { } previous)
+        {
+            previous.ScrollChanged -= OnScrollerScrollChanged;
+        }
         //  The panel virtualizes against this ScrollViewer's offset and viewport.
         _panel.Scroller = e.NameScope.Find<ScrollViewer>("PART_ScrollViewer");
+        if (_panel.Scroller is { } scroller)
+        {
+            scroller.ScrollChanged += OnScrollerScrollChanged;
+        }
+    }
+
+    private void OnScrollerScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        ViewScrollChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ────────────────────────────────────────────── pointer and links

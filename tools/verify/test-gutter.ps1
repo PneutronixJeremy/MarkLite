@@ -15,8 +15,6 @@
     line and the line of the last block jumped to, so a heading jump can be
     confirmed to have landed on a line that really is a heading in the file.
 
-    Requires MARKLITE_VIRTUAL=1; the script sets it for the app it launches. The
-    classic viewer has no gutter (it goes away at the cutover).
 
 .PARAMETER Exe
     Alternative MarkLite.exe (e.g. an unzipped portable build).
@@ -42,8 +40,6 @@ if (-not $File) {
 if (-not $CaptureDir) {
     $CaptureDir = Join-Path ([IO.Path]::GetTempPath()) 'marklite-verify/captures'
 }
-
-$env:MARKLITE_VIRTUAL = '1'
 
 $sourceLines = [IO.File]::ReadAllLines((Resolve-Path -LiteralPath $File).Path)
 $lineCount = $sourceLines.Count

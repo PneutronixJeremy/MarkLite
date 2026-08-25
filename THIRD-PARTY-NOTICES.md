@@ -23,7 +23,15 @@ governed by its own license, available at the linked upstream project.
 Musset, MIT license, https://github.com/Kryptos-FR/MarkView.Avalonia. MarkLite
 carries its own copy because the packaged renderer registers a detach handler
 per attach and cancels an already-disposed `CancellationTokenSource` on the
-second detach; the file header records the fixes. The MIT license text is
+second detach; the file header records the fixes.
+
+`src/MarkLite/Rendering/Virtual/MarkdownDocumentModel.cs` carries one regex
+copied from the same project's `MarkdownViewer` — the `![alt](url =WxH)` size
+preprocessor. MarkLite parses documents itself and renders blocks through
+MarkView's own renderers, so it has to apply MarkView's preprocessing to the
+same text; the comment above the regex says so.
+
+Both are Copyright (c) Nicolas Musset under the MIT license, whose text is
 available at https://opensource.org/licenses/MIT.
 
 ## Bundled fonts (`src/MarkLite/Assets/Fonts/`)

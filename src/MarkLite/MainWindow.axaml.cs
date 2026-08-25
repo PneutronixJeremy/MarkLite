@@ -37,7 +37,7 @@ public partial class MainWindow : Window
         (title, stale banner, TOC, find box). Zero tabs = welcome state. */
     private readonly List<DocumentTab> _tabs = [];
     private DocumentTab? _activeTab;
-    private MarkdownViewer? _welcomeViewer;
+    private VirtualMarkdownView? _welcomeViewer;
     private readonly MarkLiteHyperlinkCommand _hyperlinkCommand;
 
     /*  One renderer-extension instance shared by all tabs; it is stateless
@@ -369,68 +369,28 @@ public partial class MainWindow : Window
 
     #endregion
 
-    /*  The two viewers take content in different ways, and getting it wrong is
-        silent: the virtual view REFUSES a Markdown assignment (it would replace
-        its panel with a fully realized document), while the classic one needs
-        the clear-then-set dance because Markdown is a styled property and
-        re-assigning the same string rebuilds nothing. Both callers go through
-        here. */
-    private static void SetViewerContent(MarkdownViewer viewer, string text)
-    {
-        if (viewer is VirtualMarkdownView virtualView)
-        {
-            virtualView.Load(text);
-            return;
-        }
-        viewer.Markdown = null;
-        viewer.Markdown = text;
-    }
-
-    /// <summary>Gives back a viewer's rendered tree, leaving it attached and empty.</summary>
-    private static void DropViewerContent(MarkdownViewer viewer)
-    {
-        if (viewer is VirtualMarkdownView virtualView)
-        {
-            virtualView.Clear();
-            return;
-        }
-        viewer.Markdown = null;
-    }
-
     private void MarkActivity()
     {
         _lastActivityUtc = DateTime.UtcNow;
         _idleTrimDone = false;
     }
 
-    /*  Opt-in switch for the virtualizing viewer while both renderers exist
-        side by side, so the same measurements can be taken of each. Read once:
-        a run uses one renderer throughout. */
-    private static readonly bool UseVirtualViewer =
-        Environment.GetEnvironmentVariable("MARKLITE_VIRTUAL") == "1";
-
-    private static MarkdownViewer CreateViewer()
+    private static VirtualMarkdownView CreateViewer()
     {
-        /*  The virtual view must NOT be given Pipeline/BaseUri/Source: each of
-            those drives the base class's own render path, which would replace
-            its panel with a fully realized document. It parses with
+        /*  The view must NOT be given Pipeline/BaseUri/Source: each of those
+            drives the base class's own render path, which would replace its
+            panel with a fully realized document. It parses with
             MarkLitePipeline.Shared itself. */
-        var viewer = UseVirtualViewer
-            ? new VirtualMarkdownView()
-            : new MarkdownViewer { Pipeline = MarkLitePipeline.Shared };
-        viewer.MaxWidth = 1100;
-        /*  The virtual view reserves a strip on each side of the document for
-            the line-number gutter, so it needs less outer margin to end up with
-            a comparable text column; the classic view has no gutter and keeps
-            the original margins. Both are symmetric, so the document stays
-            centred either way. */
-        viewer.Margin = UseVirtualViewer
-            ? new Thickness(8, 6, 8, 0)
-            : new Thickness(28, 6, 28, 0);
-        /*  The sidebar shows every heading level, and the entries are paired
-            positionally with the model's (or the rendered tree's) headings — a
-            shallower depth would drop deep headings from the list while their
-            counterparts remain, breaking that pairing. */
+        var viewer = new VirtualMarkdownView { MaxWidth = 1100 };
+        /*  A strip on each side of the document is reserved for the
+            line-number gutter, so the outer margin is narrower than the text
+            column it ends up producing. Symmetric, so the document stays
+            centred whether or not the numbers are drawn. */
+        viewer.Margin = new Thickness(8, 6, 8, 0);
+        /*  The sidebar shows every heading level, and its entries are paired
+            positionally with the model's headings — a shallower depth would
+            drop deep headings from the list while their counterparts remain,
+            breaking that pairing. */
         viewer.TableOfContentsMaxDepth = 6;
         /*  Without this, wide content (long code lines, wide tables) is
             measured unbounded and overflows instead of wrapping/scrolling
@@ -474,17 +434,8 @@ public partial class MainWindow : Window
         DebugLog.Write($"line numbers: {(visible ? "shown" : "hidden")}");
 
         /*  A repaint, not a re-render: the strip is already reserved, so nothing
-            moves and no block has to be rebuilt. The classic viewer has no
-            gutter at all — it dies at the cutover — so there is nothing to
-            repaint there. */
-        if (_activeTab?.Viewer is VirtualMarkdownView virtualView)
-        {
-            virtualView.Panel.InvalidateGutter();
-        }
-        else
-        {
-            DebugLog.Write("line numbers: classic viewer has no gutter");
-        }
+            moves and no block has to be rebuilt. */
+        _activeTab?.Viewer.Panel.InvalidateGutter();
     }
 
     /// <summary>View > Body font. Swaps the app-level font token and re-renders.</summary>
@@ -521,48 +472,33 @@ public partial class MainWindow : Window
         the new theme, font or comment setting.
 
         Same text, different controls — theme, body font and comment visibility
-        are all decided while a control is BUILT, never afterwards. The
-        virtualizing viewer therefore keeps its parsed model and the reader's
-        place and only drops what it had realized; the classic viewer has no
-        such seam and re-parses the whole document. */
+        are all decided while a control is BUILT, never afterwards. The parsed
+        model is unaffected, so it (and the reader's place in it) is kept and
+        only what had been realized is dropped. */
     private void RerenderAllTabs()
     {
         if (_activeTab is { CurrentText: not null } active)
         {
-            if (active.Viewer is VirtualMarkdownView virtualView)
+            MarkActivity();
+            active.Search.Detach();
+            active.Viewer.ResetLayout();
+            DebugLog.Write($"layout reset for '{active.DisplayName}'; model kept");
+            Dispatcher.UIThread.Post(() =>
             {
-                MarkActivity();
-                active.Search.Detach();
-                virtualView.ResetLayout();
-                DebugLog.Write($"layout reset for '{active.DisplayName}'; model kept");
-                Dispatcher.UIThread.Post(() =>
+                if (active != _activeTab)
                 {
-                    if (active != _activeTab)
-                    {
-                        return;
-                    }
-                    UpdateCurrentSection();
-                    if (_findVisible && active.SearchTerm.Length > 0)
-                    {
-                        RunSearch(scrollToCurrent: false);
-                    }
-                }, DispatcherPriority.Background);
-            }
-            else
-            {
-                RenderTab(active, active.CurrentText, active.CaptureScroll());
-            }
+                    return;
+                }
+                UpdateCurrentSection();
+                if (_findVisible && active.SearchTerm.Length > 0)
+                {
+                    RunSearch(scrollToCurrent: false);
+                }
+            }, DispatcherPriority.Background);
         }
         if (_welcomeViewer is { IsVisible: true } welcome)
         {
-            if (welcome is VirtualMarkdownView virtualWelcome)
-            {
-                virtualWelcome.ResetLayout();
-            }
-            else
-            {
-                SetViewerContent(welcome, WelcomeMarkdown);
-            }
+            welcome.ResetLayout();
         }
     }
 
@@ -616,10 +552,10 @@ public partial class MainWindow : Window
 
             Deliberately NOT viewer.UseMath(): that helper also REPLACES
             Pipeline with a freshly built one, and assigning Pipeline drives
-            MarkdownViewer's own render path — which rebuilds Content from
-            scratch and, on the virtualizing view, throws its panel away.
-            Registering the extension alone has the same rendering effect,
-            because MarkLitePipeline.Shared already parses maths. */
+            the base class's own render path — which rebuilds Content from
+            scratch and throws the virtualizing panel away. Registering the
+            extension alone has the same rendering effect, because
+            MarkLitePipeline.Shared already parses maths. */
         viewer.Extensions.Add(RenderExtension);
         viewer.Extensions.AddMath();
         viewer.LinkClicked += (_, e) => _hyperlinkCommand.Execute(e.Url);
@@ -639,38 +575,21 @@ public partial class MainWindow : Window
         {
             Viewer = viewer,
             Watcher = new DocumentWatcher(),
-            /*  Model-backed search for the virtualizing viewer; the tree walk
-                is only right for a viewer that renders everything. */
-            Search = viewer is VirtualMarkdownView virtualViewer
-                ? new VirtualDocumentSearch(virtualViewer)
-                : new DocumentSearch(viewer),
+            Search = new VirtualDocumentSearch(viewer),
             StripItem = item,
             StripLabel = label,
         };
 
-        /*  Current-section tracking rides the template ScrollViewer's
-            ScrollChanged. The template only exists once the viewer has been
-            attached (tab activated), so the hook is installed lazily on first
-            attachment. */
-        viewer.AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(() =>
+        /*  Current-section tracking rides the viewer's scroll events, which
+            it raises from its template ScrollViewer once that exists. */
+        viewer.ViewScrollChanged += (_, _) =>
         {
-            /*  Posted at Loaded priority: the template (and with it
-                PART_ScrollViewer) is applied during the layout pass that
-                follows attachment, not at attachment itself. */
-            if (tab.ScrollHooked || tab.Scroller is not { } scrollViewer)
+            MarkActivity();
+            if (_activeTab == tab)
             {
-                return;
+                UpdateCurrentSection();
             }
-            tab.ScrollHooked = true;
-            scrollViewer.ScrollChanged += (_, _) =>
-            {
-                MarkActivity();
-                if (_activeTab == tab)
-                {
-                    UpdateCurrentSection();
-                }
-            };
-        }, DispatcherPriority.Loaded);
+        };
         nameButton.Click += (_, _) => ActivateTab(tab);
         closeButton.Click += (_, _) => CloseTab(tab);
         item.PointerPressed += (_, e) =>
@@ -754,19 +673,15 @@ public partial class MainWindow : Window
             _activeTab.StripItem.Classes.Remove("TabItemActive");
             _activeTab.Viewer.IsVisible = false;
             _activeTab.Search.Detach();
-            /*  Dropping the tree only frees it if nothing else still points
-                into it. HeadingControls holds one TextBlock per heading, and a
-                detached control keeps its own parents alive, so leaving the
-                list populated pins most of the document that was just
-                discarded. TocEntries are plain data and stay. */
-            _activeTab.HeadingControls.Clear();
-            DropViewerContent(_activeTab.Viewer);
+            /*  TocEntries are plain model data and stay — the sidebar keeps
+                working for a tab that holds no controls. */
+            _activeTab.Viewer.Clear();
             DebugLog.Write($"tab scroll saved {_activeTab.SavedScroll.Describe} for '{_activeTab.DisplayName}'; tree dropped");
         }
         if (_welcomeViewer is not null)
         {
             _welcomeViewer.IsVisible = false;
-            DropViewerContent(_welcomeViewer);
+            _welcomeViewer.Clear();
         }
 
         _activeTab = tab;
@@ -843,7 +758,7 @@ public partial class MainWindow : Window
         /*  The welcome page gives its tree back whenever a document takes the
             window (see ActivateTab), so it is rendered on the way in, not
             once at creation. */
-        SetViewerContent(_welcomeViewer, WelcomeMarkdown);
+        _welcomeViewer.Load(WelcomeMarkdown);
         _welcomeViewer.IsVisible = true;
         Title = "MarkLite";
         SetStaleBanner(null);
@@ -952,7 +867,7 @@ public partial class MainWindow : Window
 
         MarkActivity();
         tab.Search.Detach();
-        SetViewerContent(tab.Viewer, text);
+        tab.Viewer.Load(text);
         Dispatcher.UIThread.Post(() =>
         {
             /*  Two-pass restore: at Loaded priority the fresh tree may still
@@ -1139,10 +1054,8 @@ public partial class MainWindow : Window
 
     #region selection and copy
 
-    /// <summary>The active document's selection, or null under the classic viewer, which keeps
-    /// its own inside MarkView.</summary>
-    private DocumentSelection? ActiveSelection =>
-        (_activeTab?.Viewer ?? _welcomeViewer) is VirtualMarkdownView view ? view.Selection : null;
+    /// <summary>The selection of whichever document is on screen, welcome page included.</summary>
+    private DocumentSelection? ActiveSelection => (_activeTab?.Viewer ?? _welcomeViewer)?.Selection;
 
     private bool IsTextInputFocused() => FocusManager?.GetFocusedElement() is TextBox;
 
@@ -1364,41 +1277,20 @@ public partial class MainWindow : Window
             _tocVisible && (_activeTab?.TocEntries.Count ?? 0) > 0;
     }
 
-    /// <summary>Takes the viewer's heading tree and collects the rendered heading controls for one tab.</summary>
+    /// <summary>Refills one tab's sidebar heading list from its parsed model.</summary>
     private static void RebuildTocData(DocumentTab tab)
     {
-        /*  The viewer builds its table of contents from the Markdig AST while
-            rendering, so it covers ATX and setext headings alike and its slugs
-            are the very ones its anchor table uses. It comes as a tree
-            (Children nested by level); the sidebar is a flat indented list, so
-            flatten it back to document order. */
+        /*  The model holds every heading whether or not it is on screen, so the
+            sidebar is complete from the first frame: nothing is walked, and no
+            rendered heading control is needed. Headings come as a tree
+            (Children nested by level) and the sidebar is a flat indented list,
+            so flatten them back to document order. */
         tab.TocEntries.Clear();
-        if (tab.Viewer is VirtualMarkdownView { Model: { } model })
+        if (tab.Viewer.Model is { } model)
         {
-            /*  Nothing is walked: the virtual view parses its headings whether
-                or not they are on screen, so the sidebar is complete from the
-                first frame. Heading CONTROLS stay empty — only realized blocks
-                have any, and the scroll maths below uses block indices
-                instead. */
             FlattenToc(model.TocEntries, tab.TocEntries);
-            tab.HeadingControls.Clear();
-            DebugLog.Write($"toc built from model: {tab.TocEntries.Count} headings");
-            return;
         }
-
-        FlattenToc(tab.Viewer.TableOfContents, tab.TocEntries);
-
-        tab.HeadingControls.Clear();
-        tab.HeadingControls.AddRange(tab.Viewer.GetVisualDescendants()
-            .OfType<TextBlock>()
-            .Where(static c => c.Classes.Any(static cl =>
-                cl.Length == 11 && cl.StartsWith("markdown-h") && char.IsDigit(cl[10]))));
-
-        if (tab.HeadingControls.Count != tab.TocEntries.Count)
-        {
-            DebugLog.Write($"toc mismatch: parsed {tab.TocEntries.Count} headings, rendered {tab.HeadingControls.Count}");
-        }
-        DebugLog.Write($"toc built: {tab.TocEntries.Count} headings");
+        DebugLog.Write($"toc built from model: {tab.TocEntries.Count} headings");
     }
 
     private static void FlattenToc(IReadOnlyList<TocEntry>? entries, List<TocEntry> flat)
@@ -1446,49 +1338,27 @@ public partial class MainWindow : Window
 
     private void ScrollToHeading(int index)
     {
-        var tab = _activeTab;
-        if (tab is null)
+        if (_activeTab is not { Viewer.Model: { } model } tab)
         {
             return;
         }
-
-        if (tab.Viewer is VirtualMarkdownView { Model: { } model } virtualView)
-        {
-            if (index < 0 || index >= model.Headings.Count)
-            {
-                DebugLog.Write($"scroll-to-heading #{index} out of range");
-                return;
-            }
-            /*  The heading may not be realized, so there is no control to
-                measure against — the block index is the address instead. The
-                panel corrects the landing itself once the blocks it just
-                realized have real heights; the current section is refreshed
-                after that correction as well as before it. */
-            var heading = model.Headings[index];
-            virtualView.Panel.ScrollToBlock(heading.BlockIndex, -8);
-            DebugLog.Write($"scroll-to-heading #{index} '{heading.Text}' block {heading.BlockIndex} "
-                + $"offset {tab.ScrollY:F1}");
-            UpdateCurrentSection();
-            Dispatcher.UIThread.Post(UpdateCurrentSection, DispatcherPriority.Background);
-            return;
-        }
-
-        if (index < 0 || index >= tab.HeadingControls.Count)
+        if (index < 0 || index >= model.Headings.Count)
         {
             DebugLog.Write($"scroll-to-heading #{index} out of range");
             return;
         }
 
-        var point = tab.HeadingControls[index].TranslatePoint(new Point(0, 0), tab.Viewer);
-        if (point is null)
-        {
-            return;
-        }
-
-        var target = Math.Max(0, tab.ScrollY + point.Value.Y - 8);
-        tab.ScrollY = target;
-        DebugLog.Write($"scroll-to-heading #{index} '{tab.TocEntries[index].Text}' offset {target:F1}");
+        /*  The heading may not be realized, so there is no control to measure
+            against — the block index is the address instead. The panel corrects
+            the landing itself once the blocks it just realized have real
+            heights; the current section is refreshed after that correction as
+            well as before it. */
+        var heading = model.Headings[index];
+        tab.Viewer.Panel.ScrollToBlock(heading.BlockIndex, -8);
+        DebugLog.Write($"scroll-to-heading #{index} '{heading.Text}' block {heading.BlockIndex} "
+            + $"offset {tab.ScrollY:F1}");
         UpdateCurrentSection();
+        Dispatcher.UIThread.Post(UpdateCurrentSection, DispatcherPriority.Background);
     }
 
     private void ScrollToAnchor(string slug)
@@ -1499,102 +1369,67 @@ public partial class MainWindow : Window
             return;
         }
 
-        /*  The model's anchor table already covers headings, footnote
-            definitions and explicit ids alike, and resolves each to the block
-            a jump has to realize — so there is no reason to go through the
-            sidebar's heading list first. */
-        if (tab.Viewer is VirtualMarkdownView virtualDocument)
-        {
-            if (virtualDocument.ScrollToModelAnchor(slug))
-            {
-                DebugLog.Write($"anchor link: #{slug}");
-                UpdateCurrentSection();
-                Dispatcher.UIThread.Post(UpdateCurrentSection, DispatcherPriority.Background);
-            }
-            else
-            {
-                DebugLog.Write($"anchor not found: #{slug}");
-            }
-            return;
-        }
-
-        var index = tab.TocEntries.FindIndex(e => string.Equals(e.Slug, slug, StringComparison.OrdinalIgnoreCase));
-        if (index >= 0)
+        /*  The model's anchor table covers headings, footnote definitions and
+            explicit ids alike, and resolves each to the block a jump has to
+            realize — so there is no reason to go through the sidebar's heading
+            list first. */
+        if (tab.Viewer.ScrollToModelAnchor(slug))
         {
             DebugLog.Write($"anchor link: #{slug}");
-            ScrollToHeading(index);
-            return;
+            UpdateCurrentSection();
+            Dispatcher.UIThread.Post(UpdateCurrentSection, DispatcherPriority.Background);
         }
-
-        /*  Not a heading slug — the viewer also registers anchors for other
-            elements (explicit ids, footnotes), so hand it over. Its scroll is
-            a BringIntoView jump, hence the fallback rather than first choice:
-            the heading path above lands at a known offset. */
-        DebugLog.Write($"anchor not a heading, deferring to viewer: #{slug}");
-        tab.Viewer.ScrollToAnchor(slug);
+        else
+        {
+            DebugLog.Write($"anchor not found: #{slug}");
+        }
     }
 
     /// <summary>Highlights the TOC entry of the heading nearest above the viewport top.</summary>
     private void UpdateCurrentSection()
     {
-        var tab = _activeTab;
-        if (tab is null || _tocButtons.Count == 0)
+        if (_activeTab is not { Viewer.Model: { } model } tab || _tocButtons.Count == 0)
         {
             return;
         }
 
+        /*  Block-level first: the last heading that starts at or above the
+            topmost visible block. The 12 px of grace are there because a
+            heading scrolled to sits just below the viewport top. */
         var best = 0;
-        if (tab.Viewer is VirtualMarkdownView { Model: { } model } virtualView)
+        var panel = tab.Viewer.Panel;
+        var firstVisible = panel.BlockNearViewportTop(12);
+        for (var i = 0; i < model.Headings.Count && i < _tocButtons.Count; ++i)
         {
-            /*  Block-level first: the last heading that starts at or above the
-                topmost visible block. Same 12 px grace the classic path allows
-                a heading control, because a heading scrolled to sits just below
-                the viewport top. */
-            var panel = virtualView.Panel;
-            var firstVisible = panel.BlockNearViewportTop(12);
-            for (var i = 0; i < model.Headings.Count && i < _tocButtons.Count; ++i)
+            if (model.Headings[i].BlockIndex <= firstVisible)
             {
-                if (model.Headings[i].BlockIndex <= firstVisible)
-                {
-                    best = i;
-                }
-            }
-
-            /*  Then the refinement, where the answer can actually be checked: a
-                realized heading has a real Y. It matters when one top-level
-                block holds several headings (a quote, a list item) and when a
-                tall block starts above the viewport while its headings are
-                still below it — both cases the block index alone gets wrong.
-                Headings are in document order, so the first realized one below
-                the line ends the search. */
-            var refined = -1;
-            for (var i = 0; i < model.Headings.Count && i < _tocButtons.Count; ++i)
-            {
-                if (RealizedHeadingTop(tab, panel, model.Headings[i]) is not { } y)
-                {
-                    continue;
-                }
-                if (y > 12)
-                {
-                    break;
-                }
-                refined = i;
-            }
-            if (refined >= 0)
-            {
-                best = refined;
+                best = i;
             }
         }
-        else
+
+        /*  Then the refinement, where the answer can actually be checked: a
+            realized heading has a real Y. It matters when one top-level block
+            holds several headings (a quote, a list item) and when a tall block
+            starts above the viewport while its headings are still below it —
+            both cases the block index alone gets wrong. Headings are in
+            document order, so the first realized one below the line ends the
+            search. */
+        var refined = -1;
+        for (var i = 0; i < model.Headings.Count && i < _tocButtons.Count; ++i)
         {
-            for (var i = 0; i < tab.HeadingControls.Count && i < _tocButtons.Count; ++i)
+            if (RealizedHeadingTop(tab, panel, model.Headings[i]) is not { } y)
             {
-                var point = tab.HeadingControls[i].TranslatePoint(new Point(0, 0), tab.Viewer);
-                if (point is not null && point.Value.Y <= 12)
-                {
-                    best = i;
-                }
+                continue;
             }
+            if (y > 12)
+            {
+                break;
+            }
+            refined = i;
+        }
+        if (refined >= 0)
+        {
+            best = refined;
         }
 
         if (best == _currentTocIndex)

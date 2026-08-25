@@ -27,16 +27,27 @@ does not:
 | Viewer           | Working set (MB) | Web engine        |
 |------------------|-----------------:|-------------------|
 | glow (terminal)  |            20–40 | no                |
-| **MarkLite**     |       **65–111** | **no**            |
+| **MarkLite**     |        **68–86** | **no**            |
 | Notepad          |             ~160 | yes (WebView2)    |
 | Markpad          |             ~375 | yes               |
 | Markdown Monster |             ~402 | yes (WebView2)    |
 
-Measured on this machine (Windows 11, 32 GB): 65–69 MB with a typical document,
-111 MB on large ones (40–77 KB of markdown — the whole document is realized as
-controls, roughly 1 MB of working set per KB of markdown). First content
-render: **~55 ms** after process start (median of 5), 150–180 ms for the large
-files. Zero `msedgewebview2.exe` children, ever.
+Measured on this machine (Windows 11, 32 GB) against the committed fixtures:
+published AOT build, fixed 1400x1000 window, `Process.WorkingSet64` read from
+the app itself after the idle trim.
+
+| Document | Size | First content render | Working set |
+|---|---:|---:|---:|
+| `sample.md` | 1.6 KB | 81 ms | 72.3 MB |
+| `sample-plan.md` | 3.5 KB | 88 ms | 67.8 MB |
+| `stress-large.md` | 528 KB | 105 ms | 85.9 MB |
+| all three, open as tabs | 533 KB | 105 ms | 78.1 MB |
+
+Rendering is virtualized — only the blocks near the viewport are built as
+controls — so the working set tracks the window rather than the file: 528 KB of
+markdown costs 14 MB more than 1.6 KB does, about 0.03 MB per KB. And only the
+active tab holds a rendered tree, so three documents open cost no more than
+one. Zero `msedgewebview2.exe` children, ever.
 
 ## Features
 
@@ -52,8 +63,14 @@ files. Zero `msedgewebview2.exe` children, ever.
 - **Math**: inline and block TeX typeset natively (CSharpMath).
 - Bundled fonts, no system dependency: Fira Code Retina for code; body font
   selectable under View > Body font (Roboto, Lexend, Segoe UI).
-- Tabs: multiple documents, per-tab scroll/search/watcher; a second launch hands
-  its file to the running instance over a named pipe.
+- **Virtualized rendering**: the document is parsed once, and only the blocks
+  near the viewport are built as controls, so a 500 KB file opens as fast as a
+  1 KB one and costs a fraction of the memory. Scrolling, the contents sidebar,
+  find and copy all work over the whole document regardless of what is on
+  screen.
+- Tabs: multiple documents, per-tab scroll/search/watcher; only the active tab
+  holds a rendered tree, so open tabs cost their text and nothing else. A second
+  launch hands its file to the running instance over a named pipe.
 - Contents sidebar (Ctrl+T) built from the document's heading tree, with
   current-section tracking and working in-document `#anchor` links.
 - Find in document (Ctrl+F): live highlighting, F3 / Shift+F3 navigation with
@@ -62,7 +79,14 @@ files. Zero `msedgewebview2.exe` children, ever.
   preserved; deleted/locked files show a stale banner and recover automatically.
 - Open via CLI argument, File > Open, drag-drop, or relative links between
   Markdown files.
-- Text selection + copy.
+- Text selection, with **Ctrl+C giving back the Markdown source** the selection
+  covers rather than the rendered text — Ctrl+A copies the file. Selections are
+  addressed by block and character, so they can span parts of the document that
+  were never rendered.
+- View > Show line numbers: a source-line gutter, numbering every line inside
+  fenced code and the starting line of everything else.
+- View > Show HTML comments: `<!-- … -->` shown dimmed rather than hidden, so a
+  document's own markers stay visible. Other raw HTML stays dropped.
 - Installer + auto-update via [Velopack](https://velopack.io): per-user install
   (no admin), background update check against GitHub Releases, silent download,
   applies on restart. Portable zip for the no-install crowd.
@@ -76,9 +100,9 @@ Document top — headings, nested lists, links, tab strip, contents sidebar:
 
 ![Sample document: headings, nested lists, inline styles, links](docs/screenshot-sample.png)
 
-Fenced code with syntax highlighting, blockquote:
+Fenced code with syntax highlighting and its language chip:
 
-![Syntax-highlighted C# fence and blockquote](docs/screenshot-code.png)
+![Syntax-highlighted C# fence with a language chip](docs/screenshot-code.png)
 
 A ```` ```mermaid ```` fence rendered as a real native diagram — no browser, no
 JS:
@@ -146,5 +170,6 @@ registry, no symbols.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Bundled fonts and library dependencies are
-covered in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+MIT — see [LICENSE](LICENSE). Bundled fonts, library dependencies and the two
+pieces of vendored MarkView source are covered in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

@@ -25,11 +25,17 @@ Ground rules:
   the process can work that out — where a character lands is the outcome of
   wrapping, theme metrics and the panel's layout — so a check that guesses
   pixels is usually testing the margin.
-- Every script exits non-zero on the first failed assertion and prints
-  `PASS`/`FAIL` lines so a future `run-all.ps1` can tabulate them.
+- Every script exits non-zero when an assertion fails and prints `PASS`/`FAIL`
+  lines; `run-all.ps1` tabulates the exit codes.
 
 ## Scripts
 
+- **`run-all.ps1 [-Exe path] [-CaptureDir dir]`** — runs every `test-*.ps1`
+  below against one build, one at a time (they share a single-instance group and
+  a window position, so two at once would answer each other's commands), and
+  prints a PASS/FAIL table. Exits non-zero if any script did. `-Exe` points it
+  at an unzipped portable build for a package smoke test. It does not run
+  `measure-memory.ps1`, which reports numbers rather than asserting on them.
 - **`common.ps1`** — dot-sourced by the rest. Launches the published exe with
   `MARKLITE_DEBUG=1` and `MARKLITE_INSTANCE=verify` (its own single-instance
   group, so a MarkLite the user already has open is never sent test documents
@@ -56,9 +62,8 @@ Ground rules:
   toggle on, gone with it off, and a raw `<img>` tag findable in neither.
   Captures both states and checks the setting survives a restart, then leaves
   it back on.
-- **`test-virtual.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** — the
-  virtualizing viewer (sets `MARKLITE_VIRTUAL=1` for the app it launches):
-  only a small fraction of the document is realized at any moment, the scroll
+- **`test-virtual.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** —
+  virtualization itself: only a small fraction of the document is realized at any moment, the scroll
   extent still covers the whole document, jumps and `scroll-end` realize their
   target, the contents sidebar is complete from the parsed model, the working
   set stays under 100 MB after scrolling a 500 KB document end to end, a
@@ -66,8 +71,8 @@ Ground rules:
   leaves the reader on their block, a tab switch brings back the same block and
   the same offset into it, and a window resize keeps the reader near the block
   they were on.
-- **`test-reload.ps1 [-Exe path]`** — live reload under the virtualizing viewer
-  (sets `MARKLITE_VIRTUAL=1`). Generates its own 1200-block document, because
+- **`test-reload.ps1 [-Exe path]`** — live reload. Generates its own
+  1200-block document, because
   the assertions need block numbering that is knowable from outside the app:
   every block is one line, blank-line separated, so block *k* is line *2k* and
   no two blocks share text. Parks the reader mid-document, then rewrites the
@@ -77,8 +82,7 @@ Ground rules:
   (`reload: reused <n> of <m> containers, <a> of <b> blocks aligned`). Edits are
   file writes; the app's own watcher notices them.
 - **`test-gutter.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** — the
-  line-number gutter (sets `MARKLITE_VIRTUAL=1`). The strip is reserved on both
-  sides of the document whether the numbers show or not, so the toggle has to be
+  line-number gutter. The strip is reserved on both sides of the document whether the numbers show or not, so the toggle has to be
   free: a full-resolution capture diff between the two states must find every
   differing pixel inside one strip's width, with the block count, realized set,
   extent, scroll offset and visible lines all unchanged. The numbers are checked
@@ -89,8 +93,7 @@ Ground rules:
   the realized fraction with the numbers showing, because the gutter draws and
   must never build controls. Leaves the setting off.
 - **`test-selection.ps1 [-Exe path] [-CaptureDir dir]`** — selection, copy and
-  link clicks under the virtualizing viewer (sets `MARKLITE_VIRTUAL=1`). Copy
-  hands back the **markdown source** the selection covers, and the selection is
+  link clicks. Copy hands back the **markdown source** the selection covers, and the selection is
   addressed by block and character, so it can span parts of the document that
   were never rendered — both claims are checked against the file itself. A
   generated 400-block fixture (one plain line per block, as `test-reload` does)
@@ -109,17 +112,16 @@ Ground rules:
   **It uses the clipboard**, saving its text contents at the start and putting
   them back at the end.
 - **`test-toc-search.ps1 [-Exe path] [-File doc.md] [-Term word]`** — contents
-  sidebar (`toc <n>` scrolls and becomes the current section; under the
-  virtualizing viewer it also lands the heading 8 px below the viewport top,
-  after the panel has corrected its own estimate; `anchor <slug>` resolves, and
-  so does a footnote slug on a document that defines one) and find-in-document
-  (match count equals a source count, `find-next` advances, closing clears
-  matches and highlights). Under the virtualizing viewer the search half also
-  asserts what only a model-backed search can do: the count equals a count over
-  the app's own text projection (`dump-text`) **exactly**, matches outside the
-  realized window are counted but not highlighted, every match stepped to ends
-  up realized, highlighted and inside the viewport, and having a search active
-  costs under 8 MB of working set.
+  sidebar (`toc <n>` scrolls, becomes the current section and lands the heading
+  8 px below the viewport top, after the panel has corrected its own estimate;
+  `anchor <slug>` resolves, and so does a footnote slug on a document that
+  defines one) and find-in-document (match count equals a source count,
+  `find-next` advances, closing clears matches and highlights). The search half
+  also asserts what only a model-backed search can do: the count equals a count
+  over the app's own text projection (`dump-text`) **exactly**, matches outside
+  the realized window are counted but not highlighted, every match stepped to
+  ends up realized, highlighted and inside the viewport, and having a search
+  active costs under 8 MB of working set.
 
 Pass list parameters comma-separated (`-Files a.md,b.md`): with `pwsh -File`,
 space-separated tokens do not bind to an array parameter.

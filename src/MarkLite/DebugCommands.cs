@@ -4,7 +4,6 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using Avalonia.Controls;
-using Avalonia.VisualTree;
 
 namespace MarkLite;
 
@@ -155,7 +154,7 @@ public partial class MainWindow
                     blocks that have never been rendered. */
                 if (ActiveSelection is not { } selection)
                 {
-                    return "no model-backed selection (classic viewer)";
+                    return "no document";
                 }
                 var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length != 4)
@@ -200,10 +199,11 @@ public partial class MainWindow
                     outcome of wrapping, theme metrics and the panel's layout.
                     Reporting the point lets such a check aim exactly, instead of
                     guessing pixels and quietly testing the margin. */
-                if (_activeTab?.Viewer is not Rendering.Virtual.VirtualMarkdownView pointView)
+                if (_activeTab is not { } pointTab)
                 {
-                    return "no virtualizing viewer";
+                    return "no document";
                 }
+                var pointView = pointTab.Viewer;
                 var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0)
                 {
@@ -223,10 +223,11 @@ public partial class MainWindow
                     it would, with the point taken from the link's own layout.
                     No input is injected: the command runs the same hit test and
                     the same navigation the pointer handler runs. */
-                if (_activeTab?.Viewer is not Rendering.Virtual.VirtualMarkdownView view)
+                if (_activeTab is not { } clickTab)
                 {
-                    return "no virtualizing viewer";
+                    return "no document";
                 }
+                var view = clickTab.Viewer;
                 var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 0)
                 {
@@ -282,9 +283,9 @@ public partial class MainWindow
         document's. */
     private string DumpModelText()
     {
-        if (_activeTab?.Viewer is not Rendering.Virtual.VirtualMarkdownView { Model: { } model })
+        if (_activeTab?.Viewer.Model is not { } model)
         {
-            return "no model (classic viewer)";
+            return "no model (nothing open)";
         }
 
         var path = Path.Combine(Path.GetTempPath(), "marklite-blocktext.txt");
@@ -307,28 +308,14 @@ public partial class MainWindow
     /*  The active tab's viewer, or the welcome viewer when no document is
         open — commands work in the welcome state too, so a script can assert
         on "close every tab" without special-casing. */
-    private MarkView.Avalonia.MarkdownViewer? DebugViewer()
+    private Rendering.Virtual.VirtualMarkdownView? DebugViewer()
     {
         return _activeTab?.Viewer ?? _welcomeViewer;
     }
 
     private ScrollViewer? DebugScroller()
     {
-        if (_activeTab is { } tab)
-        {
-            return tab.Scroller;
-        }
-        if (_welcomeViewer is { } welcome)
-        {
-            foreach (var descendant in welcome.GetVisualDescendants())
-            {
-                if (descendant is ScrollViewer scrollViewer)
-                {
-                    return scrollViewer;
-                }
-            }
-        }
-        return null;
+        return DebugViewer()?.Scroller;
     }
 
     private double DebugScrollY()
@@ -380,9 +367,10 @@ public partial class MainWindow
 
         /*  Virtualization counters: what a check needs to tell "only the
             viewport is realized" from "the whole document happens to fit".
-            Zeroed on the classic renderer, which realizes everything. */
-        if (_activeTab?.Viewer is Rendering.Virtual.VirtualMarkdownView virtualView)
+            Zeroed when no document is open, which has no panel to count. */
+        if (_activeTab is { } virtualTab)
         {
+            var virtualView = virtualTab.Viewer;
             var panel = virtualView.Panel;
             var (firstRealized, lastRealized) = panel.RealizedRange;
             /*  The scroll anchor as the app itself saves it: which block is at
@@ -392,11 +380,10 @@ public partial class MainWindow
                 viewport are estimates and legitimately differ between two
                 renders of the same document. */
             var anchorWithin = panel.FirstVisibleBlock >= 0
-                ? (_activeTab.Scroller?.Offset.Y ?? 0) - panel.BlockOffset(panel.FirstVisibleBlock)
+                ? (virtualTab.Scroller?.Offset.Y ?? 0) - panel.BlockOffset(panel.FirstVisibleBlock)
                 : 0;
             var (firstLine, lastLine) = panel.VisibleSourceLines;
-            builder.Append(",\"virtual\":true")
-                .Append(",\"blocks\":").Append(panel.BlockCount)
+            builder.Append(",\"blocks\":").Append(panel.BlockCount)
                 .Append(",\"realizedBlocks\":").Append(panel.RealizedBlockCount)
                 .Append(",\"measuredBlocks\":").Append(panel.MeasuredBlockCount)
                 .Append(",\"firstRealized\":").Append(firstRealized)
@@ -424,7 +411,7 @@ public partial class MainWindow
         }
         else
         {
-            builder.Append(",\"virtual\":false,\"blocks\":0,\"realizedBlocks\":0")
+            builder.Append(",\"blocks\":0,\"realizedBlocks\":0")
                 .Append(",\"measuredBlocks\":0,\"firstRealized\":-1,\"lastRealized\":-1")
                 .Append(",\"firstVisibleBlock\":-1,\"anchorWithin\":0")
                 .Append(",\"firstVisibleLine\":0,\"lastVisibleLine\":0")
@@ -438,10 +425,9 @@ public partial class MainWindow
             .Append(",\"findVisible\":").Append(_findVisible ? "true" : "false")
             .Append(",\"matches\":").Append(_activeTab?.Search.Count ?? 0)
             .Append(",\"matchIndex\":").Append(_activeTab?.Search.CurrentOrdinal ?? -1)
-            /*  Matches that actually carry a highlight right now. Under the
-                virtualizing viewer that is the realized subset, so a check can
-                tell "the match was found in the model" from "the match is on
-                screen with a mark on it". */
+            /*  Matches that actually carry a highlight right now — the
+                realized subset, so a check can tell "the match was found in the
+                model" from "the match is on screen with a mark on it". */
             .Append(",\"highlighted\":").Append(_activeTab?.Search.HighlightedCount ?? 0)
             /*  "12:5-14:80 (203 chars)", or empty when nothing is selected. The
                 endpoints are block:offset, so a check can assert on the exact

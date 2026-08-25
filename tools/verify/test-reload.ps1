@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Live reload under the virtualizing viewer: the reader stays put, and only
+    Live reload: the reader stays put, and only
     what actually changed is rebuilt.
 
 .DESCRIPTION
@@ -27,7 +27,6 @@
                 nothing to find by content; the check is that the fallback puts
                 the reader at the same index without an exception.
 
-    Requires MARKLITE_VIRTUAL=1; the script sets it for the app it launches.
     Nothing is typed or clicked: edits are file writes, and the app's own file
     watcher is what notices them.
 
@@ -63,8 +62,6 @@ foreach ($section in 1..200) {
     }
 }
 [IO.File]::WriteAllLines($file, $lines)
-
-$env:MARKLITE_VIRTUAL = '1'
 
 <#  A jump aims partly at estimated block heights and re-aims once the blocks
     it realized have measured, so a state read straight afterwards catches the
@@ -115,7 +112,6 @@ try {
     [void](Start-MarkLite -File $file -LogName 'test-reload')
 
     $state = Get-State
-    Assert-True $state.virtual 'the virtualizing viewer is in use'
     Assert-Equal 1200 $state.blocks 'the generated document is 1200 blocks'
 
     #  Well into the document, so an edit at the top is outside the

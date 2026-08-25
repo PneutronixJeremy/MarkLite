@@ -8,7 +8,6 @@
     frame, and that jumping around the document realizes the target rather than
     leaving the window empty.
 
-    Requires MARKLITE_VIRTUAL=1; the script sets it for the app it launches.
 
 .PARAMETER Exe
     Alternative MarkLite.exe (e.g. an unzipped portable build).
@@ -35,15 +34,12 @@ if (-not $CaptureDir) {
     $CaptureDir = Join-Path ([IO.Path]::GetTempPath()) 'marklite-verify/captures'
 }
 
-$env:MARKLITE_VIRTUAL = '1'
-
 Write-Section "test-virtual: $([IO.Path]::GetFileName($File))"
 
 try {
     [void](Start-MarkLite -File $File -LogName 'test-virtual')
 
     $state = Get-State
-    Assert-True $state.virtual 'the virtualizing viewer is in use'
     Assert-True ($state.blocks -gt 1000) "the document parsed to $($state.blocks) blocks"
 
     $tab = Get-ActiveTabState $state

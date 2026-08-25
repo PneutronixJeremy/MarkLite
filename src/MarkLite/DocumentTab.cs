@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Avalonia.Controls;
-using Avalonia.VisualTree;
 using MarkLite.Rendering.Virtual;
 
 using MarkView.Avalonia;
@@ -16,8 +15,9 @@ namespace MarkLite;
     paragraphs above the viewport: every offset in the file moves, and the
     reader is left somewhere they never scrolled to. The block hash addresses
     content rather than position, so the paragraph they were reading comes back
-    to the same place. Y is the fallback for the classic viewer, which has no
-    blocks to address. */
+    to the same place. Y is the fallback for a document with no blocks to
+    address — nothing loaded, or an empty file — and the number the logs
+    quote. */
 internal readonly record struct ScrollRestore(double Y, ulong BlockHash, int BlockIndex, double OffsetWithin)
 {
     /// <summary>A fresh document: nothing to put back.</summary>
@@ -42,9 +42,9 @@ internal readonly record struct ScrollRestore(double Y, ulong BlockHash, int Blo
     truth for content: a background reload writes it and stops there. */
 internal sealed class DocumentTab : IDisposable
 {
-    public required MarkdownViewer Viewer { get; init; }
+    public required VirtualMarkdownView Viewer { get; init; }
     public required DocumentWatcher Watcher { get; init; }
-    public required IDocumentSearch Search { get; init; }
+    public required VirtualDocumentSearch Search { get; init; }
     public required Border StripItem { get; init; }
     public required TextBlock StripLabel { get; init; }
 
@@ -62,35 +62,19 @@ internal sealed class DocumentTab : IDisposable
     /// <summary>Where the reader was when the tab was deactivated, restored on activation.</summary>
     public ScrollRestore SavedScroll { get; set; } = ScrollRestore.Top;
 
-    /// <summary>Set once the viewer's ScrollChanged has been hooked (needs an applied template).</summary>
-    public bool ScrollHooked { get; set; }
-
-    /*  Headings for the sidebar: the viewer's own TableOfContents tree,
-        flattened back to document order, paired positionally with the rendered
-        heading controls (used for scroll position math). */
+    /*  Headings for the sidebar: the parsed model's TocEntry tree, flattened
+        back to document order. Positions come from block indices, so no
+        rendered heading control is needed — and under virtualization most of
+        them do not exist. */
     public List<TocEntry> TocEntries { get; } = [];
-    public List<Control> HeadingControls { get; } = [];
 
     public string DisplayName => FilePath is null ? "Untitled" : Path.GetFileName(FilePath);
 
-    /*  MarkdownViewer keeps its ScrollViewer private (template part
-        PART_ScrollViewer); it exists only after the template has been applied,
-        which happens on first attachment to the visual tree. Callers must
-        tolerate null before that. */
-    public ScrollViewer? Scroller
-    {
-        get
-        {
-            foreach (var descendant in Viewer.GetVisualDescendants())
-            {
-                if (descendant is ScrollViewer scrollViewer)
-                {
-                    return scrollViewer;
-                }
-            }
-            return null;
-        }
-    }
+    /*  The viewer's ScrollViewer comes from its template part, so it exists
+        only after the template has been applied — which happens on first
+        attachment to the visual tree. Callers must tolerate null before
+        that. */
+    public ScrollViewer? Scroller => Viewer.Scroller;
 
     public double ScrollY
     {
@@ -104,13 +88,13 @@ internal sealed class DocumentTab : IDisposable
         }
     }
 
-    /// <summary>Reads the reader's current position: a block anchor under the virtualizing
-    /// viewer, a pixel offset under the classic one.</summary>
+    /// <summary>Reads the reader's current position as a block anchor, or as a bare pixel offset
+    /// when there are no blocks to anchor to.</summary>
     public ScrollRestore CaptureScroll()
     {
-        if (Viewer is VirtualMarkdownView { Model: { } model } virtualView && model.Blocks.Count > 0)
+        if (Viewer.Model is { } model && model.Blocks.Count > 0)
         {
-            var (block, within) = virtualView.Panel.ScrollAnchor;
+            var (block, within) = Viewer.Panel.ScrollAnchor;
             block = Math.Clamp(block, 0, model.Blocks.Count - 1);
             return new ScrollRestore(ScrollY, model.Blocks[block].Hash, block, within);
         }
@@ -122,9 +106,7 @@ internal sealed class DocumentTab : IDisposable
     /// gone. Returns the block landed on, or -1 when a pixel offset was used.</summary>
     public int RestoreScroll(ScrollRestore restore)
     {
-        if (restore.HasAnchor
-            && Viewer is VirtualMarkdownView { Model: { } model } virtualView
-            && model.Blocks.Count > 0)
+        if (restore.HasAnchor && Viewer.Model is { } model && model.Blocks.Count > 0)
         {
             /*  Three ways of finding the same paragraph again, weakest last.
                 After a reload the panel knows exactly where every surviving
@@ -132,7 +114,7 @@ internal sealed class DocumentTab : IDisposable
                 cleared — but the text is normally unchanged, so the hash finds
                 it. And when the block itself is gone, its old index is the
                 nearest thing to where the reader was. */
-            var index = virtualView.Panel.TranslateFromPreviousLoad(restore.BlockIndex);
+            var index = Viewer.Panel.TranslateFromPreviousLoad(restore.BlockIndex);
             if (index < 0)
             {
                 index = model.FindBlockByHash(restore.BlockHash, restore.BlockIndex);
@@ -141,7 +123,7 @@ internal sealed class DocumentTab : IDisposable
             {
                 index = Math.Clamp(restore.BlockIndex, 0, model.Blocks.Count - 1);
             }
-            virtualView.Panel.ScrollToBlock(index, restore.OffsetWithin);
+            Viewer.Panel.ScrollToBlock(index, restore.OffsetWithin);
             return index;
         }
         ScrollY = restore.Y;

@@ -1625,29 +1625,29 @@ Two things the injected run established that no numeric check had:
   test; nothing in this phase touches it. **PASS**
 
 ## Phase 7: Cutover and cleanup
-Status: Not started
+Status: Complete
 
-- [ ] Remove `MARKLITE_VIRTUAL` switch; `VirtualMarkdownView` is the only
+- [x] Remove `MARKLITE_VIRTUAL` switch; `VirtualMarkdownView` is the only
   viewer (tabs and welcome). Delete the old code paths: `HeadingControls`,
   `GetVisualDescendants` walks in `DocumentTab`/`MainWindow`/
   `DocumentSearch`, `RebuildTocData`'s positional pairing, pixel-offset
   scroll fields, the `MarkdownViewer` scroll-hook workaround
   (`ScrollHooked`); `DocumentTab` shrinks to text, model, anchor, watcher,
   search, strip controls.
-- [ ] `MarkdownTheme.axaml` selectors reviewed: keep `mv|MarkdownViewer`
+- [x] `MarkdownTheme.axaml` selectors reviewed: keep `mv|MarkdownViewer`
   scoping (the subclass matches) or retarget to the new class — whichever
   Phase 3 settled on; remove dead classes.
-- [ ] Re-read every comment touched by Phases 2–6 for plan references and
+- [x] Re-read every comment touched by Phases 2–6 for plan references and
   for accuracy against the final code.
-- [ ] `tools/verify/run-all.ps1` runs every script against the published exe
+- [x] `tools/verify/run-all.ps1` runs every script against the published exe
   and prints a PASS/FAIL table; `tools/verify/README.md` current.
-- [ ] Screenshots in `docs/` refreshed from `testdata/` fixtures where the
+- [x] Screenshots in `docs/` refreshed from `testdata/` fixtures where the
   UI changed visibly (selection highlight, scrollbar) — only if they differ.
-- [ ] README: Features bullets (virtualized rendering, selection copies
+- [x] README: Features bullets (virtualized rendering, selection copies
   markdown), "Why" section numbers replaced with the Phase 7 measurement
   table (typical doc, 40 KB plan, 500 KB stress fixture, 3 heavy tabs),
   RAM comparison table row for MarkLite updated.
-- [ ] `THIRD-PARTY-NOTICES.md` lists MarkView (MIT) for the vendored
+- [x] `THIRD-PARTY-NOTICES.md` lists MarkView (MIT) for the vendored
   renderer and any copied snippet (image-size regex, heading text
   extractor); License section of README points at it.
 
@@ -1663,7 +1663,108 @@ Status: Not started
   → no hits; `git grep -n "plans/" src tools docs` → no hits.
 
 ### Phase Summary
-_(write when phase completes)_
+The classic renderer is gone. `VirtualMarkdownView` is the only viewer, for tabs
+and for the welcome page alike, and nothing reads `MARKLITE_VIRTUAL` any more.
+
+The user re-opened "keep the classic path as a fallback?" before this phase and
+decided **full cutover** (2026-08-25). The deciding argument was that the
+classic path had not been a fallback since Phase 4A: selection, markdown copy
+and the line-number gutter were never built for it, so falling back would have
+traded one bug for three missing features — while still costing the memory this
+release exists to fix. The real fallback is the shipped v1.0.1 build and
+Velopack's previous-version rollback.
+
+What went:
+- `DocumentSearch.cs` (tree-walking search) and `IDocumentSearch.cs`. With one
+  implementation left there is nothing for the interface to abstract, so
+  `DocumentTab.Search` is a `VirtualDocumentSearch` and the interface's doc
+  comments moved onto its members.
+- `DocumentTab.HeadingControls` and `ScrollHooked`; `DocumentTab.Viewer` is now
+  a `VirtualMarkdownView`, and `Scroller` forwards to it instead of walking the
+  visual tree.
+- `MainWindow.CreateViewer`'s branch, `SetViewerContent`/`DropViewerContent`
+  (call sites use `Load`/`Clear` directly), and the classic arms of
+  `RerenderAllTabs`, `RebuildTocData`, `ScrollToHeading`, `ScrollToAnchor`,
+  `UpdateCurrentSection`, `SetLineNumbersVisible` and `ActiveSelection`.
+- `dump-state`'s `"virtual"` field, which could only ever report true once the
+  branch went, along with the three script assertions that read it.
+
+One thing was added rather than removed:
+**`VirtualMarkdownView.ViewScrollChanged`**, raised from the template
+`ScrollViewer` and re-hooked in `OnApplyTemplate` (a theme switch re-templates
+and hands over a different ScrollViewer, so the old subscription is dropped
+there too). It replaces the lazy `AttachedToVisualTree` + `ScrollHooked` dance
+`MainWindow` ran per tab, which existed only because `MarkdownViewer` keeps its
+ScrollViewer private.
+
+`MarkdownTheme.axaml` needed no change: Phase 3 had already retargeted all 30
+selectors to `:is(mv|MarkdownViewer)` so they would match the subclass, and
+every class they name is still produced by a live renderer. No dead selectors.
+
+`tools/verify/run-all.ps1` is new: it runs the seven `test-*.ps1` scripts one at
+a time against one exe (they share a single-instance group and a window
+position, so concurrency would have them answering each other's commands) and
+prints a PASS/FAIL table from their exit codes. `-Exe` points it at an unzipped
+portable build, which is what Phase 8 needs. It deliberately does not run
+`measure-memory.ps1`, which reports numbers rather than asserting on them.
+
+All five `docs/` screenshots were re-captured from the `testdata/` fixtures at
+1280x900: the text column moved (the gutter strip is reserved on both sides, so
+the outer margin shrank from 28 px to 8 px), the scrollbar is now always drawn,
+and the menu bar has gained Options and Help since the originals were taken.
+`docs/screenshot-plan.png` was refreshed too although no document references it
+— a pre-existing orphan, left in place rather than deleted as an unrequested
+change.
+
+The README's "Why" section now carries a fixture table instead of hand-measured
+figures, and the comparison table's MarkLite row went from 65–111 MB to
+68–86 MB. Every number in it comes from `measure-memory.ps1` against the
+published exe, so it is reproducible from the repo.
+
+### Verification Plan results
+- `build/publish.ps1` exit 0, **0 warnings**. **PASS**
+- `dotnet test` → **53 passed, 0 failed**. **PASS**
+- `tools/verify/run-all.ps1` against `publish/MarkLite.exe` → **ALL PASS
+  (7 scripts)**. **PASS**
+
+  | Script | Result | Seconds |
+  |---|---|---:|
+  | test-tabs.ps1 | PASS | 2.6 |
+  | test-html-comments.ps1 | PASS | 1.6 |
+  | test-virtual.ps1 | PASS | 3.1 |
+  | test-toc-search.ps1 | PASS | 1.8 |
+  | test-gutter.ps1 | PASS | 11.7 |
+  | test-reload.ps1 | PASS | 1.7 |
+  | test-selection.ps1 | PASS | 4.7 |
+
+- Final memory table (published exe, 1400x1000, after the forced collect the
+  idle trim performs):
+
+  | Fixture(s) | Size | First render | Working set |
+  |---|---:|---:|---:|
+  | sample.md | 1.6 KB | 81 ms | 72.3 MB |
+  | sample-plan.md | 3.5 KB | 88 ms | 67.8 MB |
+  | stress-large.md | 528 KB | 105 ms | 85.9 MB |
+  | stress + plan + sample, cycled twice | 533 KB | 105 ms | 78.1 MB |
+
+  Against this phase's targets: sample-plan ≤ 75 MB **PASS** (67.8);
+  stress-large < 100 MB after a scroll-through **PASS** (85.9 after the trim —
+  114.8 MB is the peak reached mid-scroll, before it); 3 heavy tabs < 120 MB
+  **PASS** (78.1); first render on stress-large < 300 ms **PASS** (105 ms);
+  per-KB slope (85.9 − 72.3) / (528 − 1.6) = **0.026 MB/KB** against a 0.2
+  budget **PASS**.
+
+  **sample.md ≤ 70 MB is NOT met** at 72.3 MB — the same measurement-method gap
+  Phase 1 recorded, not a regression. The harness fixes the window at 1400x1000,
+  runs with `MARKLITE_DEBUG=1` and samples immediately; the classic renderer
+  read 75.9 MB on the same fixture under the same harness, so the cutover moved
+  that number 3.6 MB in the right direction. **RECORDED**
+- `tools/scrub-check.ps1` → **clean (20 files scanned)**, exit 0. It caught one
+  real hit on the way: an absolute example path in `run-all.ps1`'s help, now
+  relative. **PASS**
+- `git grep -n "Phase [0-9]" -- src tools docs` → no hits. `git grep -n
+  "plans/" -- src tools docs` → four hits, all inside `tools/scrub-check.ps1`,
+  which exists to scan that directory. **PASS**
 
 ## Phase 8: Release v1.1.0
 Status: Not started

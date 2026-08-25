@@ -801,9 +801,9 @@ internal sealed class VirtualBlockPanel : Panel
                 YAML front matter, a link reference definition group — and
                 MarkView's own root panel spaces its CHILDREN, so a block that
                 contributes none costs nothing. Charging it the gap anyway
-                pushed everything below it 8 px down, which is exactly what a
-                capture comparison against the classic renderer caught on a
-                document that opens with an <img> tag. */
+                pushed everything below it 8 px down, which is what a capture
+                comparison caught on a document that opens with an <img>
+                tag. */
             if (previousDrawn && height > 0)
             {
                 running += BlockSpacing;

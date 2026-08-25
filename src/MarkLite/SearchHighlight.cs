@@ -27,10 +27,8 @@ internal sealed record HighlightPiece(Run Run, bool HadForeground, IBrush? BaseF
 
     One session records the undo snapshots for whatever it split. Undo() puts
     the recorded collections back; Forget() drops the records without undoing,
-    for a tree that no longer exists. Both searches use this: the classic one
-    with a single session over the whole rendered document, the virtualizing one
-    with a session per realized block, so recycling a block is a matter of
-    dropping its session. */
+    for a tree that no longer exists. Search keeps one session per realized
+    block, so recycling a block is a matter of dropping its session. */
 internal sealed class HighlightSession
 {
     /*  Undo record: an inline collection and the exact list it held before

@@ -26,7 +26,7 @@ namespace MarkLite.Rendering.Virtual;
     do and the renderers are the authority; searching the real inline text means
     a divergence shows up as a logged count mismatch instead of as a highlight
     drawn over the wrong characters. */
-internal sealed class VirtualDocumentSearch : IDocumentSearch
+internal sealed class VirtualDocumentSearch
 {
     /// <summary>Pixels between the viewport top and the current match after a jump.</summary>
     private const double CurrentMatchMargin = 100;
@@ -62,10 +62,14 @@ internal sealed class VirtualDocumentSearch : IDocumentSearch
         _panel.Recycled += OnRecycled;
     }
 
+    /// <summary>Matches in the document. Zero when no search is active.</summary>
     public int Count => _search?.Count ?? 0;
 
+    /// <summary>Zero-based index of the current match; -1 when there are none.</summary>
     public int CurrentOrdinal => _current;
 
+    /// <summary>How many of those matches currently carry a highlight. Smaller than
+    /// <see cref="Count"/> whenever part of the document is unrealized.</summary>
     public int HighlightedCount => _pieces.Count(static pieces => pieces is { Count: > 0 });
 
     public void Apply(string term, IBrush matchBrush, IBrush currentBrush, IBrush currentForeground,
@@ -102,6 +106,7 @@ internal sealed class VirtualDocumentSearch : IDocumentSearch
         }
     }
 
+    /// <summary>Reverts all highlighting and forgets the search.</summary>
     public void Clear()
     {
         foreach (var session in _sessions.Values)

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Selection, copy and link clicks under the virtualizing viewer.
+    Selection, copy and link clicks over the rendered document.
 
 .DESCRIPTION
     Copy hands back the MARKDOWN SOURCE the selection covers, and the selection
@@ -27,7 +27,6 @@
       highlight      - a capture with a selection over three blocks must show
                        the selection colour, and none of it once cleared.
 
-    Requires MARKLITE_VIRTUAL=1; the script sets it for the app it launches.
     Nothing is typed or clicked: selections and clicks travel over the debug
     command channel.
 
@@ -83,8 +82,6 @@ function Get-BlockStart {
     return $offset
 }
 
-$env:MARKLITE_VIRTUAL = '1'
-
 $savedClipboard = ''
 try {
     $savedClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
@@ -131,7 +128,6 @@ try {
 
     # ------------------------------------------------- an exact slice
     $before = Get-State
-    Assert-True $before.virtual 'the virtualizing viewer is in use'
     Assert-Equal 400 $before.blocks 'the generated document is 400 blocks'
     Assert-Equal '' $before.selection 'nothing is selected to begin with'
 

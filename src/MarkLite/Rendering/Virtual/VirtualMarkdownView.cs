@@ -28,6 +28,7 @@ namespace MarkLite.Rendering.Virtual;
 internal sealed class VirtualMarkdownView : MarkdownViewer
 {
     private readonly VirtualBlockPanel _panel = new();
+    private BlockRealizer? _realizer;
 
     static VirtualMarkdownView()
     {
@@ -65,11 +66,22 @@ internal sealed class VirtualMarkdownView : MarkdownViewer
         var model = MarkdownDocumentModel.Parse(text, MarkLitePipeline.Shared, TableOfContentsMaxDepth);
         var parsedMs = timer.ElapsedMilliseconds;
 
-        var realizer = new BlockRealizer(model, MarkLitePipeline.Shared, GetExtensions(), baseUri);
-        realizer.LinkClicked += OnRealizerLinkClicked;
+        /*  One realizer for the life of the view. A reload re-points it at the
+            new model rather than building a second one, so controls carried
+            over by the panel keep working against the renderer that made
+            them. */
+        if (_realizer is null)
+        {
+            _realizer = new BlockRealizer(model, MarkLitePipeline.Shared, GetExtensions(), baseUri);
+            _realizer.LinkClicked += OnRealizerLinkClicked;
+        }
+        else
+        {
+            _realizer.Rebind(model);
+        }
 
         Model = model;
-        _panel.Load(model, realizer);
+        _panel.Load(model, _realizer);
 
         DebugLog.Write($"render: parsed {model.Blocks.Count} blocks in {parsedMs} ms, "
             + $"{model.Headings.Count} headings");
@@ -79,6 +91,7 @@ internal sealed class VirtualMarkdownView : MarkdownViewer
     public void Clear()
     {
         Model = null;
+        _realizer = null;
         _panel.Clear();
     }
 

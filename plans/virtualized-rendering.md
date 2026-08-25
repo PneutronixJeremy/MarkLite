@@ -886,9 +886,14 @@ Known gaps, all owned by later phases and all logged rather than hidden:
   and no focus stealing (the same substitution Phase 1 made for `WM_CLOSE`).
 
 ## Phase 4: Feature parity — TOC, anchors, scroll anchor, live reload
-Status: Not started
+Status: Complete
 
-- [ ] Enable footnotes in `MarkLitePipeline.Shared`
+Footnotes on, the sidebar and every anchor served from the parsed model, and the
+reader's place expressed as a block rather than a pixel offset — so a reload that
+inserts fifty paragraphs above the viewport, or a theme change that re-wraps the
+whole document, leaves them looking at the same paragraph.
+
+- [x] Enable footnotes in `MarkLitePipeline.Shared`
   (`Use<Markdig.Extensions.Footnotes.FootnoteExtension>()`, NOT MarkView's
   `UseFootnotes` — the name is ambiguous between the two namespaces). Knock-on
   effects to handle in the same item: `[^n]` becomes a superscript link instead
@@ -902,27 +907,27 @@ Status: Not started
   `test-html-comments`/`test-toc-search` on both renderers: the fixtures other
   than the stress file were measured not to move, so any change there is a real
   regression.
-- [ ] TOC sidebar from `Model.TocEntries` (no visual-tree walk); remove
+- [x] TOC sidebar from `Model.TocEntries` (no visual-tree walk); remove
   `HeadingControls` and the `toc mismatch` path. Current-section tracking:
   nearest heading block index ≤ `FirstVisibleBlock`, refined with the real
   Y of realized heading controls (`Tag` slug lookup) when present.
-- [ ] `ScrollToHeading`/`ScrollToAnchor` → `Panel.ScrollToBlock(index, -8)`;
+- [x] `ScrollToHeading`/`ScrollToAnchor` → `Panel.ScrollToBlock(index, -8)`;
   non-heading slugs resolved through `Model.Anchors`; unknown slug logged.
   After the jump, when the target block was unmeasured, a second pass at
   `Background` priority corrects the offset once heights are real.
-- [ ] Scroll preservation switches from pixel offset to `ScrollAnchor`
+- [x] Scroll preservation switches from pixel offset to `ScrollAnchor`
   (block hash + offset within block): saved on deactivate, restored on
   activate; on live reload the anchor block is found by hash first, then by
   nearest index; the same two-pass restore as today. `DocumentTab.SavedScrollY`
   replaced accordingly; log lines keep the `scroll saved/restored` wording
   and add the block index.
-- [ ] Live reload reuses realized containers whose block hash is unchanged
+- [x] Live reload reuses realized containers whose block hash is unchanged
   (moved into the new model's index), so an edit far from the viewport
   changes nothing on screen and an edit inside the viewport re-realizes only
   that block. Heights carried over by hash.
-- [ ] Theme and body-font changes: model kept, all containers dropped, height
+- [x] Theme and body-font changes: model kept, all containers dropped, height
   cache cleared, re-realize at the same anchor.
-- [ ] Update `tools/verify/test-toc-search.ps1` (TOC half) and
+- [x] Update `tools/verify/test-toc-search.ps1` (TOC half) and
   `test-reload.ps1` (new: append/insert/delete-paragraph edits with anchor
   assertions) for the virtual view.
 
@@ -946,7 +951,153 @@ Status: Not started
   the same block and offset ±1 px; `render` time < 300 ms.
 
 ### Phase Summary
-_(write when phase completes)_
+The virtualizing viewer now navigates entirely from the parsed model, and the
+reader's position is content-addressed. `dotnet test` is at 25 tests;
+`test-virtual` at 24 checks; `test-reload` is new at 17.
+
+- **Footnotes are on** (`Markdig.Extensions.Footnotes.FootnoteExtension`, named
+  explicitly because both Markdig and MarkView publish a `UseFootnotes` and they
+  are not the same call). MarkView registers `FootnoteGroupRenderer` and
+  `FootnoteLinkRenderer` unconditionally, so only the parser side needed
+  switching on. `[^n]` is now a superscript link, definitions collect into a
+  group at the end of the document, and `fn-<n>` anchors resolve — under both
+  renderers.
+- **The contents sidebar, every anchor and the current-section highlight come
+  from the model.** `ScrollToAnchor` no longer searches the sidebar's heading
+  list first: `Model.Anchors` already covers headings, footnotes and explicit
+  ids and resolves each to the block that has to be realized.
+- **Current-section tracking is refined by realized heading controls**, which
+  matters when one top-level block holds several headings (a heading inside a
+  quote or list item) and when a tall block starts above the viewport while its
+  headings are still below it.
+- **A jump corrects itself.** `ScrollToBlock` aims at an offset built partly from
+  estimated heights, then re-aims at `Background` priority once the blocks it
+  realized have measured — bounded to two passes, and skipped entirely when
+  every block above the target is already measured. The landing is now exact:
+  8.0 px, on `toc 5` and on `toc 250` alike.
+- **`ScrollRestore`** (block hash + index + offset within the block) replaces
+  `DocumentTab.SavedScrollY`, with `CaptureScroll`/`RestoreScroll` on the tab.
+  Restoring tries three things, weakest last: the reload alignment, the block
+  hash, the old index.
+- **Reload reuses containers.** `VirtualBlockPanel.Load` carries over every
+  realized container whose block survived, and `BlockRealizer.Rebind` re-points
+  one renderer at the new model instead of building a second one (controls
+  already built keep working against the renderer that made them).
+- **Theme, body font and comment visibility now call `ResetLayout`** instead of
+  re-parsing: the model and the sidebar are kept, every control and every
+  measured height is dropped, and the anchor is held across the passes it takes
+  for the new heights to settle.
+
+Four things that were not obvious, all found by the scripted checks:
+
+- **Markdig gives `FootnoteGroup` and `LinkReferenceDefinitionGroup` a span
+  covering the whole document.** Believed, the last block of the file changes on
+  every edit anywhere in it — and the reload alignment works inward from both
+  ends, so a last block that never matches collapses the entire suffix. The
+  symptom was "5 of 2074 blocks aligned" and a reader thrown to a different
+  paragraph on every reload. Both groups are containers whose children have
+  honest spans, so each is now described by its definitions: extent from the
+  children's min/max, hash over the children's slices in order.
+- **A nearest-hash lookup is not good enough to align two versions of a
+  document.** The stress fixture repeats paragraphs verbatim, so an insert above
+  the viewport handed the reader an identical paragraph four blocks away and
+  reported every container as re-used including the one that had just changed.
+  Replaced by `MarkdownDocumentModel.AlignFrom`: longest matching prefix,
+  longest matching suffix, `-1` in between. Exact for insert, edit and delete,
+  O(n), no diff algorithm. The hash lookup survives as the fallback for a tab
+  switch, where there is no previous model to align against.
+- **A block that renders to nothing was still charged the 8 px inter-block
+  gap.** Raw HTML, YAML front matter and the link-reference group produce no
+  controls at all; MarkView's own root panel spaces its *children*, so a block
+  that contributes none costs nothing. The virtual panel was adding the gap
+  regardless, which pushed everything below such a block down — 12 px on
+  `sample-html.md`, which opens with an `<img>` tag. Caught by the capture
+  comparison (5.7 % of pixels differing), now 0 %.
+- **A container realized during the current scroll event has not been arranged
+  yet**, so its `TranslatePoint` still reports where it was before the jump.
+  Refining the current section from those positions put the reader in whichever
+  section had been on screen a moment earlier. Guarded on `IsArrangeValid`, with
+  the block index as the answer until layout has run. Related: a heading carries
+  a top margin, so the *drawn* glyphs sit lower than the block does — the
+  refinement measures the heading's layout slot, or a heading the reader was
+  just sent to reads as not-yet-reached.
+
+One item is deliberately **not** done, and is carried to Phase 7:
+
+- **`DocumentTab.HeadingControls` and the `toc mismatch` log line stay.** The
+  classic viewer is still the default until the cutover, and its
+  `ScrollToHeading` and `UpdateCurrentSection` have no other way to find a
+  heading's position — MarkView exposes no block-to-control mapping. The virtual
+  path never touches the list (it is cleared on every rebuild), so nothing is
+  pinned by it; removing it is one line of Phase 7's classic-path deletion
+  rather than a separate change that would leave the default renderer's sidebar
+  broken for Phases 5 and 6.
+
+### Verification Plan results
+- `dotnet test` → **25 passed, 0 failed**. New: footnote anchors under the app's
+  own pipeline, `{#id}` still absent, the four `AlignFrom` cases (insert, edit,
+  delete, repeated blocks), the synthetic-group span and hash fix, and the
+  fixture-scale alignment (2073 of 2074 blocks recognised across an insert; the
+  one loss is the seam where the inserted paragraph merges with what follows).
+  Block count pinned at **2074** and anchors at **311** (308 headings + 3
+  footnotes), both as the plan predicted. **PASS**
+- Footnotes: `stress-large.md` parses to **2074 blocks and 311 anchors**;
+  `anchor fn-1` resolves to block 2073, the footnote group at the end of the
+  document, under both renderers. `find station` still reports **373** on the
+  classic renderer, so the footnote rendering added no stray prose. **PASS**
+- Capture comparison at offset 0, classic vs virtual, 1400x1000, every second
+  pixel sampled:
+
+  | Fixture | Differing | Where |
+  |---|---:|---|
+  | `sample.md` | 0.012 % | scrollbar column only (x 1342) |
+  | `sample-plan.md` | 0.147 % | one heading 1 px lower, from "Baseline measurements" down |
+  | `sample-html.md` | **0 %** | — |
+
+  Phase 3 recorded the same 0.147 % on `sample-plan.md` and attributed it to the
+  scrollbar thumb; it is not. It is a sub-pixel accumulation difference: the
+  panel sums `DesiredSize.Height` where the classic `StackPanel` arranges
+  children directly, and after a blockquote with a fractional height the next
+  heading snaps to the neighbouring device pixel. One heading, 1 px, everything
+  else identical. **RECORDED**
+- `test-toc-search.ps1`, virtual, `stress-large.md` → **ALL PASS (17 checks,
+  3 skipped)**. `toc 5` and `toc 250` both land the heading **8.0 px** below the
+  viewport top after the correction pass and both become the current section;
+  the footnote anchor resolves to the last block. The three skips are the
+  known search gap (Phase 5), printed with their real numbers. On
+  `sample-plan.md`: ALL PASS (14, 3 skipped). **PASS**
+- `test-reload.ps1` → **ALL PASS (17 checks)**. 1200-block generated document,
+  reader parked on block 359: insert 50 paragraphs at the top → **1200 of 1200
+  blocks aligned**, reader on block 409, all **43 of 43** containers carried
+  over, scroll 14749 → 16788 px; rewrite the paragraph under the reader →
+  **1249 of 1250** aligned, **42 of 43** carried over, reader still on 409;
+  delete it → 1249 blocks, reader still on 409 via the old-index fallback.
+  No exceptions. **PASS**
+- `test-virtual.ps1` → **ALL PASS (24 checks)**, including the two new items:
+  a comment-visibility toggle keeps the model (2074 blocks), the sidebar (308
+  headings) and the reader's block (602 → 602); and a switch away to
+  `sample.md` and back renders in **51 ms** (< 300) and brings back **block 998
+  at the same 74 px into it**. The pixel offset legitimately differs by ~2.9 k px
+  because a fresh render re-estimates the unmeasured blocks above the viewport —
+  which is exactly why `dump-state` now reports `anchorWithin`. **PASS**
+- Regression, **classic renderer**: `test-tabs` ALL PASS (14),
+  `test-html-comments` ALL PASS (9), `test-toc-search` ALL PASS (13, 1 skipped)
+  on `sample-plan.md` and ALL PASS (14) on `stress-large.md`. **PASS**
+- Regression, **virtual renderer**: `test-tabs` ALL PASS (14),
+  `test-html-comments` ALL PASS (9). **PASS**
+- Memory, all three fixtures, after this phase:
+
+  | Stage | Classic | Virtual |
+  |---|---:|---:|
+  | first render (sample.md) | 73.9 | 74.3 |
+  | opened 2 tabs | 75.6 | 75.2 |
+  | opened 3 tabs (stress active) | 379.2 | 87.9 |
+  | after scroll-through | 315.8 | 93.2 |
+  | after cycling tabs twice | 407.2 | 89.4 |
+  | after gc | 314.9 | **88.3** |
+
+  Unchanged in character from Phase 3, and the footnote group costs nothing
+  measurable.
 
 ## Phase 4A: Line-number gutter (View toggle)
 Status: Not started

@@ -472,18 +472,53 @@ public partial class MainWindow : Window
         }
     }
 
-    /*  Re-renders whatever is on screen. Inactive tabs need nothing: they hold
+    /*  Rebuilds whatever is on screen. Inactive tabs need nothing: they hold
         no control tree, and the render they get on activation already picks up
-        the new theme, font or comment setting. */
+        the new theme, font or comment setting.
+
+        Same text, different controls — theme, body font and comment visibility
+        are all decided while a control is BUILT, never afterwards. The
+        virtualizing viewer therefore keeps its parsed model and the reader's
+        place and only drops what it had realized; the classic viewer has no
+        such seam and re-parses the whole document. */
     private void RerenderAllTabs()
     {
         if (_activeTab is { CurrentText: not null } active)
         {
-            RenderTab(active, active.CurrentText, active.ScrollY);
+            if (active.Viewer is VirtualMarkdownView virtualView)
+            {
+                MarkActivity();
+                active.Search.Detach();
+                virtualView.ResetLayout();
+                DebugLog.Write($"layout reset for '{active.DisplayName}'; model kept");
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (active != _activeTab)
+                    {
+                        return;
+                    }
+                    UpdateCurrentSection();
+                    if (_findVisible && active.SearchTerm.Length > 0)
+                    {
+                        RunSearch(scrollToCurrent: false);
+                    }
+                }, DispatcherPriority.Background);
+            }
+            else
+            {
+                RenderTab(active, active.CurrentText, active.CaptureScroll());
+            }
         }
-        if (_welcomeViewer is { IsVisible: true })
+        if (_welcomeViewer is { IsVisible: true } welcome)
         {
-            SetViewerContent(_welcomeViewer, WelcomeMarkdown);
+            if (welcome is VirtualMarkdownView virtualWelcome)
+            {
+                virtualWelcome.ResetLayout();
+            }
+            else
+            {
+                SetViewerContent(welcome, WelcomeMarkdown);
+            }
         }
     }
 
@@ -667,7 +702,7 @@ public partial class MainWindow : Window
 
         if (_activeTab is not null)
         {
-            _activeTab.SavedScrollY = _activeTab.ScrollY;
+            _activeTab.SavedScroll = _activeTab.CaptureScroll();
             _activeTab.StripItem.Classes.Remove("TabItemActive");
             _activeTab.Viewer.IsVisible = false;
             _activeTab.Search.Detach();
@@ -678,7 +713,7 @@ public partial class MainWindow : Window
                 discarded. TocEntries are plain data and stay. */
             _activeTab.HeadingControls.Clear();
             DropViewerContent(_activeTab.Viewer);
-            DebugLog.Write($"tab scroll saved {_activeTab.SavedScrollY:F1} for '{_activeTab.DisplayName}'; tree dropped");
+            DebugLog.Write($"tab scroll saved {_activeTab.SavedScroll.Describe} for '{_activeTab.DisplayName}'; tree dropped");
         }
         if (_welcomeViewer is not null)
         {
@@ -703,7 +738,7 @@ public partial class MainWindow : Window
                 it — so activation always renders. The render pipeline restores
                 the offset and refreshes TOC and search with it. */
             var timer = Stopwatch.StartNew();
-            RenderTab(tab, tab.CurrentText, tab.SavedScrollY, afterLayout: () =>
+            RenderTab(tab, tab.CurrentText, tab.SavedScroll, afterLayout: () =>
                 /*  Posted, not written here: the scroll restore's own second
                     pass is already queued at this priority, so this lands
                     after it and "tab switched" is reliably the LAST line of a
@@ -828,8 +863,8 @@ public partial class MainWindow : Window
 
             if (tab == _activeTab)
             {
-                var savedScroll = tab.ScrollY;
-                DebugLog.Write($"reload triggered: {tab.FilePath}; scroll saved {savedScroll:F1}");
+                var savedScroll = tab.CaptureScroll();
+                DebugLog.Write($"reload triggered: {tab.FilePath}; scroll saved {savedScroll.Describe}");
                 RenderTab(tab, text, savedScroll,
                     () => DebugLog.Write($"scroll restored {tab.ScrollY:F1}"));
             }
@@ -859,7 +894,7 @@ public partial class MainWindow : Window
         Only the active tab has a viewer with a tree, so a render for any other
         tab is dropped — its text is already in CurrentText and gets rendered
         when the tab is activated. */
-    private void RenderTab(DocumentTab tab, string text, double restoreScrollY = 0, Action? afterLayout = null)
+    private void RenderTab(DocumentTab tab, string text, ScrollRestore restore = default, Action? afterLayout = null)
     {
         if (tab != _activeTab)
         {
@@ -875,18 +910,19 @@ public partial class MainWindow : Window
             /*  Two-pass restore: at Loaded priority the fresh tree may still
                 report a smaller extent, and the first set gets clamped to it.
                 The Background pass runs once layout has settled. */
-            if (restoreScrollY > 0)
+            if (restore.MovesTheView)
             {
-                tab.ScrollY = restoreScrollY;
+                tab.RestoreScroll(restore);
                 Dispatcher.UIThread.Post(() =>
                 {
                     if (tab != _activeTab)
                     {
                         return;
                     }
-                    tab.ScrollY = restoreScrollY;
+                    var block = tab.RestoreScroll(restore);
                     UpdateCurrentSection();
-                    DebugLog.Write($"tab scroll restored {tab.ScrollY:F1} for '{tab.DisplayName}'");
+                    var where = block >= 0 ? $"{tab.ScrollY:F1} block {block}" : $"{tab.ScrollY:F1}";
+                    DebugLog.Write($"tab scroll restored {where} for '{tab.DisplayName}'");
                 }, DispatcherPriority.Background);
             }
             RebuildTocData(tab);
@@ -1283,12 +1319,16 @@ public partial class MainWindow : Window
                 return;
             }
             /*  The heading may not be realized, so there is no control to
-                measure against — the block index is the address instead. */
+                measure against — the block index is the address instead. The
+                panel corrects the landing itself once the blocks it just
+                realized have real heights; the current section is refreshed
+                after that correction as well as before it. */
             var heading = model.Headings[index];
             virtualView.Panel.ScrollToBlock(heading.BlockIndex, -8);
             DebugLog.Write($"scroll-to-heading #{index} '{heading.Text}' block {heading.BlockIndex} "
                 + $"offset {tab.ScrollY:F1}");
             UpdateCurrentSection();
+            Dispatcher.UIThread.Post(UpdateCurrentSection, DispatcherPriority.Background);
             return;
         }
 
@@ -1317,6 +1357,26 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        /*  The model's anchor table already covers headings, footnote
+            definitions and explicit ids alike, and resolves each to the block
+            a jump has to realize — so there is no reason to go through the
+            sidebar's heading list first. */
+        if (tab.Viewer is VirtualMarkdownView virtualDocument)
+        {
+            if (virtualDocument.ScrollToModelAnchor(slug))
+            {
+                DebugLog.Write($"anchor link: #{slug}");
+                UpdateCurrentSection();
+                Dispatcher.UIThread.Post(UpdateCurrentSection, DispatcherPriority.Background);
+            }
+            else
+            {
+                DebugLog.Write($"anchor not found: #{slug}");
+            }
+            return;
+        }
+
         var index = tab.TocEntries.FindIndex(e => string.Equals(e.Slug, slug, StringComparison.OrdinalIgnoreCase));
         if (index >= 0)
         {
@@ -1330,11 +1390,6 @@ public partial class MainWindow : Window
             a BringIntoView jump, hence the fallback rather than first choice:
             the heading path above lands at a known offset. */
         DebugLog.Write($"anchor not a heading, deferring to viewer: #{slug}");
-        if (tab.Viewer is VirtualMarkdownView virtualView)
-        {
-            virtualView.ScrollToModelAnchor(slug);
-            return;
-        }
         tab.Viewer.ScrollToAnchor(slug);
     }
 
@@ -1350,18 +1405,43 @@ public partial class MainWindow : Window
         var best = 0;
         if (tab.Viewer is VirtualMarkdownView { Model: { } model } virtualView)
         {
-            /*  Block-level precision: the last heading that starts at or above
-                the topmost visible block. Phase 4 refines this with the real Y
-                of headings that happen to be realized. */
-            /*  Same 12 px grace the classic path allows a heading control:
-                a heading scrolled to sits just below the viewport top. */
-            var firstVisible = virtualView.Panel.BlockNearViewportTop(12);
+            /*  Block-level first: the last heading that starts at or above the
+                topmost visible block. Same 12 px grace the classic path allows
+                a heading control, because a heading scrolled to sits just below
+                the viewport top. */
+            var panel = virtualView.Panel;
+            var firstVisible = panel.BlockNearViewportTop(12);
             for (var i = 0; i < model.Headings.Count && i < _tocButtons.Count; ++i)
             {
                 if (model.Headings[i].BlockIndex <= firstVisible)
                 {
                     best = i;
                 }
+            }
+
+            /*  Then the refinement, where the answer can actually be checked: a
+                realized heading has a real Y. It matters when one top-level
+                block holds several headings (a quote, a list item) and when a
+                tall block starts above the viewport while its headings are
+                still below it — both cases the block index alone gets wrong.
+                Headings are in document order, so the first realized one below
+                the line ends the search. */
+            var refined = -1;
+            for (var i = 0; i < model.Headings.Count && i < _tocButtons.Count; ++i)
+            {
+                if (RealizedHeadingTop(tab, panel, model.Headings[i]) is not { } y)
+                {
+                    continue;
+                }
+                if (y > 12)
+                {
+                    break;
+                }
+                refined = i;
+            }
+            if (refined >= 0)
+            {
+                best = refined;
             }
         }
         else
@@ -1388,6 +1468,48 @@ public partial class MainWindow : Window
         _tocButtons[best].Classes.Add("TocEntryCurrent");
         _currentTocIndex = best;
         _tocButtons[best].BringIntoView();
+    }
+
+    /*  Y of a heading's own control relative to the viewer, when the block
+        holding it is realized. The slug is the identity rather than the
+        position: one block can hold several headings, and the realizer tags
+        each control with the model's slug for exactly this lookup. */
+    private static double? RealizedHeadingTop(
+        DocumentTab tab, VirtualBlockPanel panel, MarkdownDocumentModel.HeadingInfo heading)
+    {
+        /*  A container realized during THIS scroll event has not been arranged
+            yet: it still reports the position it had before the jump, which
+            would put the reader in whichever section happened to be on screen
+            a moment ago. Only an arranged container knows where it is; until
+            then the block index is the better answer. */
+        if (panel.GetRealized(heading.BlockIndex) is not { IsArrangeValid: true } container)
+        {
+            return null;
+        }
+        if (container.TranslatePoint(new Point(0, 0), tab.Viewer)?.Y is not { } containerTop)
+        {
+            return null;
+        }
+
+        foreach (var descendant in container.GetVisualDescendants().OfType<TextBlock>())
+        {
+            if (descendant.Tag as string != heading.Slug)
+            {
+                continue;
+            }
+            /*  The heading's LAYOUT SLOT, not its rendered box: a heading
+                carries a top margin that separates it from what came before,
+                and a jump aims at the block, so the drawn glyphs sit that
+                margin lower than the block does. Measuring the box would put
+                a heading the reader was just sent to below the line that
+                decides "am I in this section yet". Never above the block's own
+                top, which is where a block's first heading belongs. */
+            var y = descendant.TranslatePoint(new Point(0, 0), tab.Viewer)?.Y;
+            return y is null
+                ? containerTop
+                : Math.Max(containerTop, y.Value - descendant.Margin.Top);
+        }
+        return null;
     }
 
     #endregion

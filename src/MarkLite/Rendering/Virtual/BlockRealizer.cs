@@ -23,10 +23,10 @@ namespace MarkLite.Rendering.Virtual;
     the renderer it picks per object type on first use. */
 internal sealed class BlockRealizer
 {
-    private readonly MarkdownDocumentModel _model;
     private readonly AvaloniaRenderer _renderer;
     private readonly Dictionary<int, List<MarkdownDocumentModel.HeadingInfo>> _headingsByBlock = [];
     private readonly List<Control> _spill = [];
+    private MarkdownDocumentModel _model;
 
     public BlockRealizer(
         MarkdownDocumentModel model,
@@ -36,6 +36,7 @@ internal sealed class BlockRealizer
     {
         _model = model;
         _renderer = new AvaloniaRenderer { BaseUri = baseUri };
+        IndexHeadings();
 
         foreach (var extension in extensions)
         {
@@ -48,8 +49,24 @@ internal sealed class BlockRealizer
         DebugLog.Write($"realizer: {extensions.Count} extensions registered");
 
         _renderer.LinkClicked += (_, e) => LinkClicked?.Invoke(this, e);
+    }
 
-        foreach (var heading in model.Headings)
+    /*  Points the same renderer at a re-parsed version of the same document.
+        The renderer holds no per-document state — it is a set of block
+        renderers and a base URI — so a live reload does not need a new one,
+        and reusing it keeps the LinkClicked wiring (and the controls already
+        built from it) valid instead of leaving an orphaned renderer alive
+        behind every carried-over container. */
+    public void Rebind(MarkdownDocumentModel model)
+    {
+        _model = model;
+        _headingsByBlock.Clear();
+        IndexHeadings();
+    }
+
+    private void IndexHeadings()
+    {
+        foreach (var heading in _model.Headings)
         {
             if (!_headingsByBlock.TryGetValue(heading.BlockIndex, out var list))
             {
@@ -154,6 +171,9 @@ internal sealed class BlockContainer : StackPanel
         Spacing = 8;
     }
 
+    /*  Settable, not init-only: a live reload re-parses into new indices and
+        carries unchanged containers across to whatever their block is called
+        now. */
     /// <summary>Index into <see cref="MarkdownDocumentModel.Blocks"/>.</summary>
-    public int BlockIndex { get; init; }
+    public int BlockIndex { get; set; }
 }

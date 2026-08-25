@@ -110,25 +110,29 @@ public class MarkdownDocumentModelTests
         Assert.Equal(2, model.Anchors["heading-two"]);
     }
 
-    /*  The app's pipeline is MarkView's UseSupportedExtensions plus maths, and
-        that set includes NEITHER footnotes NOR generic {#id} attributes — so a
-        footnote definition is just a paragraph and an {#id} is literal text.
-        Asserted rather than assumed: if the pipeline ever gains them, this
-        test fails and the anchor expectations get revisited on purpose. */
+    /*  The app's pipeline is MarkView's UseSupportedExtensions, maths, and
+        footnotes — but NOT generic {#id} attributes, so an {#id} is still
+        literal text. Both halves asserted rather than assumed: the anchor
+        expectations everywhere else depend on exactly this set, and a change
+        to it should have to come here first.
+
+        Footnote definitions leave their place in the flow and collect into one
+        group block at the end of the document, which is why fn-1 resolves to
+        the last block rather than to where it was written. */
     [Fact]
-    public void FootnoteAndIdAnchorsAreAbsentUnderTheAppsPipeline()
+    public void FootnoteAnchorsResolveButIdAttributesAreStillLiteral()
     {
         var model = Parse("Text with a note.[^n]\n\n## Marked {#custom-id}\n\n[^n]: The note.\n");
 
-        Assert.False(model.Anchors.ContainsKey("fn-1"));
+        Assert.Equal(model.Blocks.Count - 1, model.Anchors["fn-1"]);
         Assert.False(model.Anchors.ContainsKey("custom-id"));
     }
 
-    /*  The model's own footnote and {#id} handling, exercised against a
-        pipeline that does enable them. Keeps that code honest even though the
-        app does not switch the extensions on. */
+    /*  The model's own {#id} handling, exercised against a pipeline that does
+        enable generic attributes. Keeps that code honest even though the app
+        does not switch that extension on. */
     [Fact]
-    public void FootnoteAndIdAnchorsResolveWhenTheExtensionsAreEnabled()
+    public void IdAttributeAnchorsResolveWhenGenericAttributesAreEnabled()
     {
         var pipeline = new MarkdownPipelineBuilder()
             .UseSupportedExtensions()
@@ -139,8 +143,84 @@ public class MarkdownDocumentModelTests
             "Text with a note.[^n]\n\n## Marked {#custom-id}\n\n[^n]: The note.\n", pipeline);
 
         Assert.True(model.Anchors.ContainsKey("custom-id"));
-        //  Footnote definitions are gathered into one group block at the end.
         Assert.Equal(model.Blocks.Count - 1, model.Anchors["fn-1"]);
+    }
+
+    /*  How the reader's place survives a reload, and how the panel decides
+        which realized controls it can keep: a block is recognised by the hash
+        of its source, and the nearest candidate to where it used to be wins so
+        that duplicate blocks do not swap places. */
+    [Fact]
+    public void BlocksAreFoundAgainByHashAfterAnEditElsewhere()
+    {
+        var before = Parse("# Title\n\nAlpha.\n\nBeta.\n\nGamma.\n");
+        var after = Parse("# Title\n\nNEW.\n\nALSO NEW.\n\nAlpha.\n\nBeta.\n\nGamma.\n");
+
+        //  "Beta." was block 2; two paragraphs inserted above make it block 4.
+        Assert.Equal(4, after.FindBlockByHash(before.Blocks[2].Hash, 2));
+    }
+
+    /*  What a live reload actually navigates by. The alignment has to be exact
+        on a document that repeats itself, because the stress fixture does and a
+        nearest-hash guess quietly puts the reader on the wrong copy. */
+    [Fact]
+    public void AlignmentCarriesUnchangedBlocksAcrossAnInsertAbove()
+    {
+        var before = Parse("# Title\n\nAlpha.\n\nBeta.\n\nGamma.\n");
+        var after = Parse("# Title\n\nNEW.\n\nAlpha.\n\nBeta.\n\nGamma.\n");
+
+        //  Title stays put; everything after the insert shifts by one.
+        Assert.Equal([0, 2, 3, 4], after.AlignFrom(before));
+    }
+
+    [Fact]
+    public void AlignmentMarksOnlyTheEditedBlockAsGone()
+    {
+        var before = Parse("# Title\n\nAlpha.\n\nBeta.\n\nGamma.\n");
+        var after = Parse("# Title\n\nAlpha CHANGED.\n\nBeta.\n\nGamma.\n");
+
+        Assert.Equal([0, -1, 2, 3], after.AlignFrom(before));
+    }
+
+    [Fact]
+    public void AlignmentClosesTheGapLeftByADeletedBlock()
+    {
+        var before = Parse("# Title\n\nAlpha.\n\nBeta.\n\nGamma.\n");
+        var after = Parse("# Title\n\nAlpha.\n\nGamma.\n");
+
+        Assert.Equal([0, 1, -1, 2], after.AlignFrom(before));
+    }
+
+    /*  The case a nearest-hash lookup gets wrong: every paragraph is the same
+        text, so only position can tell them apart. */
+    [Fact]
+    public void AlignmentIsNotFooledByRepeatedBlocks()
+    {
+        var before = Parse("Same.\n\nSame.\n\nSame.\n\nEnd.\n");
+        var after = Parse("Extra.\n\nSame.\n\nSame.\n\nSame.\n\nEnd.\n");
+
+        Assert.Equal([1, 2, 3, 4], after.AlignFrom(before));
+    }
+
+    [Fact]
+    public void DuplicateBlocksResolveToTheNearestCandidate()
+    {
+        var model = Parse("Same.\n\nOther.\n\nSame.\n\nMore.\n\nSame.\n");
+        var hash = model.Blocks[0].Hash;
+
+        Assert.Equal(hash, model.Blocks[2].Hash);
+        Assert.Equal(0, model.FindBlockByHash(hash, 0));
+        Assert.Equal(2, model.FindBlockByHash(hash, 3));
+        Assert.Equal(4, model.FindBlockByHash(hash, 9));
+    }
+
+    [Fact]
+    public void ADeletedBlockIsReportedRatherThanGuessed()
+    {
+        var before = Parse("# Title\n\nAlpha.\n\nBeta.\n");
+        var after = Parse("# Title\n\nBeta.\n");
+
+        Assert.Equal(-1, after.FindBlockByHash(before.Blocks[1].Hash, 1));
     }
 
     [Fact]
@@ -193,12 +273,18 @@ public class MarkdownDocumentModelTests
 
         /*  Markdig's own count, which is what the viewer virtualizes over. The
             generator script reports 2078 because it counts the blocks it
-            EMITS; the parser merges some of them (the three footnote
-            definitions are ordinary paragraphs under this pipeline, setext
-            underlines belong to their heading). Pinned so a fixture or
-            pipeline change cannot move it unnoticed. */
-        Assert.Equal(2073, model.Blocks.Count);
+            EMITS; the parser merges some of them (setext underlines belong to
+            their heading) and gathers the three footnote definitions into a
+            single group block at the end. Pinned so a fixture or pipeline
+            change cannot move it unnoticed. */
+        Assert.Equal(2074, model.Blocks.Count);
         Assert.Equal(308, model.Headings.Count);
+
+        /*  Every heading is an anchor, and so is every footnote: a link to
+            "#fn-2" has to resolve to a block the panel can realize. */
+        Assert.Equal(311, model.Anchors.Count);
+        Assert.Equal(model.Blocks.Count - 1, model.Anchors["fn-1"]);
+        Assert.Equal(model.Anchors["fn-1"], model.Anchors["fn-3"]);
 
         //  Every block's slice must round-trip, or scrolling maths and the
         //  Phase 6 copy path would both be reading the wrong characters.
@@ -220,6 +306,54 @@ public class MarkdownDocumentModelTests
         //  The fixture deliberately repeats heading text; the numbered
         //  suffixes are what keeps the anchors apart.
         Assert.Contains(slugs, s => s.EndsWith("-1", StringComparison.Ordinal));
+    }
+
+    /*  Markdig hands its footnote group and its link-reference group a span
+        covering the whole document. Believed, that makes the LAST block of the
+        file change on every edit anywhere in it — and the reload alignment
+        works inward from both ends, so a last block that never matches
+        collapses the entire suffix and rebuilds the whole visible document.
+        The groups are described by their own definitions instead. */
+    [Fact]
+    public void SyntheticGroupBlocksAreDescribedByTheirDefinitionsNotTheWholeFile()
+    {
+        var model = Parse("# Title\n\nBody.[^n]\n\n[^n]: The note.\n");
+        var group = model.Blocks[^1];
+
+        Assert.IsType<Markdig.Extensions.Footnotes.FootnoteGroup>(group.Block);
+        Assert.True(group.Start > 0, "the footnote group must not start at the top of the file");
+        Assert.Contains("The note.", model.Text.Substring(group.Start, group.Length));
+    }
+
+    [Fact]
+    public void GroupBlockHashesSurviveAnEditElsewhereInTheDocument()
+    {
+        var before = Parse("# Title\n\nBody.[^n]\n\n[^n]: The note.\n");
+        var after = Parse("# Title\n\nBody REWRITTEN.[^n]\n\n[^n]: The note.\n");
+
+        Assert.Equal(before.Blocks[^1].Hash, after.Blocks[^1].Hash);
+    }
+
+    /*  The end-to-end version of the same thing, on the document the viewer is
+        actually measured against: inserting a paragraph near the top must leave
+        every other block recognisable, all the way to the footnotes. */
+    [Fact]
+    public void StressFixtureAlignsAcrossAnInsertNearTheTop()
+    {
+        var text = Fixture("stress-large.md");
+        var newline = text.Contains("\r\n") ? "\r\n" : "\n";
+        var lines = text.Split(newline);
+        var edited = string.Join(newline, lines[..10]) + newline + newline + "Probe paragraph."
+            + newline + string.Join(newline, lines[10..]);
+
+        var before = Parse(text);
+        var after = Parse(edited);
+        var map = after.AlignFrom(before);
+
+        //  One block is lost at the seam: the inserted paragraph merges with
+        //  what follows it. Everything else must survive.
+        Assert.InRange(map.Count(index => index >= 0), before.Blocks.Count - 2, before.Blocks.Count);
+        Assert.Equal(after.Blocks.Count - 1, map[^1]);
     }
 
     private static string Kind(Markdig.Syntax.Block block) => block switch

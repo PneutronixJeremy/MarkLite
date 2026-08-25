@@ -269,19 +269,36 @@ public partial class MainWindow
         {
             var panel = virtualView.Panel;
             var (firstRealized, lastRealized) = panel.RealizedRange;
+            /*  The scroll anchor as the app itself saves it: which block is at
+                the viewport top, and how far into that block the reader is.
+                A check that a tab switch or a reload put the reader back has
+                to compare THAT, not the pixel offset — offsets above the
+                viewport are estimates and legitimately differ between two
+                renders of the same document. */
+            var anchorWithin = panel.FirstVisibleBlock >= 0
+                ? (_activeTab.Scroller?.Offset.Y ?? 0) - panel.BlockOffset(panel.FirstVisibleBlock)
+                : 0;
             builder.Append(",\"virtual\":true")
                 .Append(",\"blocks\":").Append(panel.BlockCount)
                 .Append(",\"realizedBlocks\":").Append(panel.RealizedBlockCount)
                 .Append(",\"measuredBlocks\":").Append(panel.MeasuredBlockCount)
                 .Append(",\"firstRealized\":").Append(firstRealized)
                 .Append(",\"lastRealized\":").Append(lastRealized)
-                .Append(",\"firstVisibleBlock\":").Append(panel.FirstVisibleBlock);
+                .Append(",\"firstVisibleBlock\":").Append(panel.FirstVisibleBlock)
+                .Append(",\"anchorWithin\":").Append(Number(anchorWithin))
+                /*  Where the last jump aimed and where that block actually sits
+                    now: their difference against scrollY is how far off a
+                    heading jump landed once the correction pass has run. */
+                .Append(",\"targetBlock\":").Append(panel.LastScrollTargetBlock)
+                .Append(",\"targetBlockOffset\":").Append(Number(
+                    panel.LastScrollTargetBlock >= 0 ? panel.BlockOffset(panel.LastScrollTargetBlock) : 0));
         }
         else
         {
             builder.Append(",\"virtual\":false,\"blocks\":0,\"realizedBlocks\":0")
                 .Append(",\"measuredBlocks\":0,\"firstRealized\":-1,\"lastRealized\":-1")
-                .Append(",\"firstVisibleBlock\":-1");
+                .Append(",\"firstVisibleBlock\":-1,\"anchorWithin\":0")
+                .Append(",\"targetBlock\":-1,\"targetBlockOffset\":0");
         }
 
         builder.Append(",\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))

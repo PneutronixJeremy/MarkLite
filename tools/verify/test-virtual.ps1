@@ -120,6 +120,81 @@ try {
     Assert-True ($after.workingSetMb -lt 100) `
         "working set stays under 100 MB after the scroll workout ($($after.workingSetMb) MB)"
 
+    <#  A theme, body-font or comment-visibility change rebuilds every control
+        without re-parsing anything: the model is kept, the height cache is
+        dropped, and the reader has to be put back on the block they were on
+        even though every height in the document has just become a guess. The
+        comment toggle is the one of the three a script can drive. #>
+    [void](Send-Cmd 'toc 90')
+    $beforeRelayout = Get-State
+    foreach ($attempt in 1..8) {
+        $next = Get-State
+        if ((Get-ActiveTabState $next).scrollY -eq (Get-ActiveTabState $beforeRelayout).scrollY) {
+            break
+        }
+        $beforeRelayout = $next
+    }
+    $relayoutBlock = $beforeRelayout.firstVisibleBlock
+
+    [void](Send-Cmd 'html-comments off')
+    $relayout = Get-State
+    foreach ($attempt in 1..10) {
+        $next = Get-State
+        if ($next.firstVisibleBlock -eq $relayout.firstVisibleBlock -and
+            $next.measuredBlocks -eq $relayout.measuredBlocks) {
+            break
+        }
+        $relayout = $next
+    }
+    Assert-Equal $beforeRelayout.blocks $relayout.blocks 'the model survived the relayout (no re-parse)'
+    Assert-True ([Math]::Abs($relayout.firstVisibleBlock - $relayoutBlock) -le 2) `
+        "the reader stayed on block $relayoutBlock through the relayout (now $($relayout.firstVisibleBlock))"
+    Assert-True ($relayout.tocCount -eq $beforeRelayout.tocCount) `
+        "contents untouched by the relayout ($($relayout.tocCount) headings)"
+    [void](Send-Cmd 'html-comments on')
+
+    <#  Switching away drops the whole control tree; switching back re-parses
+        and has to land the reader on the same paragraph, not the same pixel -
+        the saved anchor is a block and an offset into it. #>
+    [void](Send-Cmd 'toc 150')
+    $beforeSwitch = Get-State
+    foreach ($attempt in 1..8) {
+        $next = Get-State
+        if ((Get-ActiveTabState $next).scrollY -eq (Get-ActiveTabState $beforeSwitch).scrollY) {
+            break
+        }
+        $beforeSwitch = $next
+    }
+    $switchBlock = $beforeSwitch.firstVisibleBlock
+    $switchWithin = $beforeSwitch.anchorWithin
+
+    [void](Open-InMarkLite (Join-Path (git rev-parse --show-toplevel) 'testdata/sample.md'))
+    $since = Get-LogCount
+    [void](Send-Cmd 'tab 0')
+    $switched = Wait-Log -Pattern "tab switched to '[^']*'; render (\d+) ms" -TimeoutSec 30 -Since $since
+    $renderMs = [int]$switched.Match.Groups[1].Value
+    Assert-True ($renderMs -lt 300) "switching back to the stress fixture rendered in $renderMs ms"
+
+    $back = Get-State
+    foreach ($attempt in 1..8) {
+        $next = Get-State
+        if ((Get-ActiveTabState $next).scrollY -eq (Get-ActiveTabState $back).scrollY) {
+            break
+        }
+        $back = $next
+    }
+    Assert-Equal $switchBlock $back.firstVisibleBlock 'the anchor block came back after the tab switch'
+    <#  The offset WITHIN the block, not the pixel offset: a fresh render
+        estimates the unmeasured blocks above the viewport again, so the same
+        paragraph legitimately sits at a different absolute offset. #>
+    Assert-Near $switchWithin $back.anchorWithin 1 'and the reader is the same distance into it'
+
+    #  Close the second tab, not the active one: close-tab closes whatever is
+    #  active, and the checks below are about the stress fixture.
+    [void](Send-Cmd 'tab 1')
+    [void](Send-Cmd 'close-tab')
+    [void](Send-Cmd 'tab 0')
+
     #  Resizing re-wraps every block, so every measured height is a guess
     #  again. The extent must survive it and the reader must stay put.
     #  SetWindowPos, not injected input: the window is neither focused nor

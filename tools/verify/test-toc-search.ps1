@@ -7,7 +7,11 @@
     the debug command channel. Two halves:
 
       TOC     - "toc <n>" must scroll the document and make <n> the current
-                section; "anchor <slug>" must land on that heading.
+                section; under the virtualizing viewer it must also land the
+                heading 8 px below the viewport top, which is only knowable
+                after the panel has corrected its own estimate. "anchor <slug>"
+                must land on that heading, and on a footnote when the document
+                has any.
       Search  - "find <term>" must report the same number of matches as a
                 plain text count over the source file, and "find-next" must
                 advance the current match.
@@ -57,14 +61,53 @@ try {
     [void](Start-MarkLite -File $File -LogName 'test-toc-search')
 
     # ---------------------------------------------------------------- TOC
+    $virtual = $env:MARKLITE_VIRTUAL -eq '1'
+
     $state = Get-State
     Assert-True ($state.tocCount -gt 0) "contents built ($($state.tocCount) headings)"
 
+    <#  A jump aims at an offset built partly from estimated block heights, and
+        the panel re-aims once the blocks it realized have measured. Sampling
+        until the landing stops moving is what a reader's eye does too; the
+        assertion is on where it settles. #>
+    function Invoke-TocJump {
+        param([int]$Index)
+
+        [void](Send-Cmd "toc $Index")
+        $s = Get-State
+        foreach ($attempt in 1..5) {
+            $next = Get-State
+            if ((Get-ActiveTabState $next).scrollY -eq (Get-ActiveTabState $s).scrollY) {
+                break
+            }
+            $s = $next
+        }
+        return $s
+    }
+
     $target = [Math]::Min(5, $state.tocCount - 1)
-    [void](Send-Cmd "toc $target")
-    $state = Get-State
+    $state = Invoke-TocJump -Index $target
     Assert-True ((Get-ActiveTabState $state).scrollY -gt 0) "toc $target scrolled the document"
     Assert-Equal $target $state.tocIndex "toc $target became the current section"
+
+    if ($virtual) {
+        #  ScrollToHeading asks for the block top minus 8 px, so the heading
+        #  ends up exactly that far below the viewport top once the estimates
+        #  above it have been corrected.
+        $delta = $state.targetBlockOffset - (Get-ActiveTabState $state).scrollY
+        Assert-Near 8 $delta 2 "toc $target left the heading 8 px below the viewport top"
+    }
+
+    #  A jump deep into a long document is the interesting one: everything
+    #  above the target is still an estimate when the first hop is taken.
+    if ($state.tocCount -gt 250) {
+        $deep = Invoke-TocJump -Index 250
+        Assert-Equal 250 $deep.tocIndex 'toc 250 became the current section'
+        if ($virtual) {
+            $delta = $deep.targetBlockOffset - (Get-ActiveTabState $deep).scrollY
+            Assert-Near 8 $delta 2 'toc 250 left the heading 8 px below the viewport top'
+        }
+    }
 
     [void](Send-Cmd 'scroll 0')
     $state = Get-State
@@ -81,6 +124,24 @@ try {
     $anchorLines = @(Get-LogLines)[$before..((Get-LogCount) - 1)] -match 'anchor link:'
     Assert-True ($anchorLines.Count -ge 1) "anchor #$slug resolved to a heading"
 
+    <#  Footnotes are anchors too, and not heading ones: "fn-1" resolves
+        through the model's anchor table to the footnote group at the very end
+        of the document, which the panel then has to realize. Only checked on
+        documents that define one. #>
+    if ([IO.File]::ReadAllText((Resolve-Path -LiteralPath $File).Path) -match '(?m)^\[\^') {
+        [void](Send-Cmd 'scroll 0')
+        [void](Send-Cmd 'anchor fn-1')
+        $state = Get-State
+        $tab = Get-ActiveTabState $state
+        Assert-True ($tab.scrollY -gt 0) "anchor #fn-1 scrolled to the footnotes ($([int]$tab.scrollY) px)"
+        if ($virtual) {
+            Assert-Equal ($state.blocks - 1) $state.targetBlock `
+                'the footnote anchor resolved to the footnote group at the end of the document'
+        }
+    } else {
+        Write-Skip "$([IO.Path]::GetFileName($File)) defines no footnotes - fn-1 anchor not exercised"
+    }
+
     # ------------------------------------------------------------- search
     $expected = Get-SourceMatchCount -Path $File -Needle $Term
     Assert-True ($expected -gt 1) "test term '$Term' occurs $expected times in the source"
@@ -93,7 +154,6 @@ try {
     #  of the document's matches. Reported as skipped, with the numbers, rather
     #  than asserted against a total the viewer cannot yet know: search moves to
     #  the parsed model in a later phase, and these two checks come back then.
-    $virtual = $env:MARKLITE_VIRTUAL -eq '1'
     if ($virtual) {
         Write-Skip "find '$Term' counts realized blocks only ($reported of $expected) - model-backed search not implemented yet"
     } else {

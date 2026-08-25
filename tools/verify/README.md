@@ -46,12 +46,27 @@ Ground rules:
   only a small fraction of the document is realized at any moment, the scroll
   extent still covers the whole document, jumps and `scroll-end` realize their
   target, the contents sidebar is complete from the parsed model, the working
-  set stays under 100 MB after scrolling a 500 KB document end to end, and a
-  window resize keeps the reader near the block they were on.
+  set stays under 100 MB after scrolling a 500 KB document end to end, a
+  comment-visibility toggle rebuilds every control without re-parsing and
+  leaves the reader on their block, a tab switch brings back the same block and
+  the same offset into it, and a window resize keeps the reader near the block
+  they were on.
+- **`test-reload.ps1 [-Exe path]`** — live reload under the virtualizing viewer
+  (sets `MARKLITE_VIRTUAL=1`). Generates its own 1200-block document, because
+  the assertions need block numbering that is knowable from outside the app:
+  every block is one line, blank-line separated, so block *k* is line *2k* and
+  no two blocks share text. Parks the reader mid-document, then rewrites the
+  file three times — 50 paragraphs inserted at the top, the paragraph under the
+  reader rewritten, that paragraph deleted — and asserts the reader stays on the
+  same paragraph each time and that only genuinely changed blocks are rebuilt
+  (`reload: reused <n> of <m> containers, <a> of <b> blocks aligned`). Edits are
+  file writes; the app's own watcher notices them.
 - **`test-toc-search.ps1 [-Exe path] [-File doc.md] [-Term word]`** — contents
-  sidebar (`toc <n>` scrolls and becomes the current section, `anchor <slug>`
-  resolves) and find-in-document (match count equals a source count, `find-next`
-  advances, closing clears).
+  sidebar (`toc <n>` scrolls and becomes the current section; under the
+  virtualizing viewer it also lands the heading 8 px below the viewport top,
+  after the panel has corrected its own estimate; `anchor <slug>` resolves, and
+  so does a footnote slug on a document that defines one) and find-in-document
+  (match count equals a source count, `find-next` advances, closing clears).
 
 Pass list parameters comma-separated (`-Files a.md,b.md`): with `pwsh -File`,
 space-separated tokens do not bind to an array parameter.

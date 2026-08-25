@@ -82,6 +82,73 @@ internal sealed partial class MarkdownDocumentModel
     /// <summary>The heading tree, built the same way MarkView builds its own.</summary>
     public IReadOnlyList<TocEntry> TocEntries { get; }
 
+    /// <summary>Maps every block of an earlier version of this document onto its block here,
+    /// or -1 where it has no counterpart. The returned array is indexed by the OLD block index.
+    /// </summary>
+    /*  An edit is a local thing: some blocks at the start are untouched, some
+        blocks at the end are untouched, and what changed sits between them. So
+        the longest matching prefix and the longest matching suffix identify
+        every block that survived, exactly, without a diff algorithm and without
+        being fooled by a document that repeats itself — and the stress fixture
+        repeats itself a great deal. Blocks inside the changed region get -1:
+        they may look like some other block in the document, but they are not
+        the same block, and treating them as such moves the reader somewhere
+        they never were. */
+    public int[] AlignFrom(MarkdownDocumentModel previous)
+    {
+        var oldCount = previous.Blocks.Count;
+        var newCount = Blocks.Count;
+        var map = new int[oldCount];
+
+        var shorter = Math.Min(oldCount, newCount);
+        var prefix = 0;
+        while (prefix < shorter && previous.Blocks[prefix].Hash == Blocks[prefix].Hash)
+        {
+            prefix++;
+        }
+        var suffix = 0;
+        while (suffix < shorter - prefix
+            && previous.Blocks[oldCount - 1 - suffix].Hash == Blocks[newCount - 1 - suffix].Hash)
+        {
+            suffix++;
+        }
+
+        for (var index = 0; index < oldCount; index++)
+        {
+            map[index] = index < prefix ? index
+                : index >= oldCount - suffix ? newCount - (oldCount - index)
+                : -1;
+        }
+        return map;
+    }
+
+    /// <summary>Finds the block whose source slice hashes to <paramref name="hash"/>, preferring
+    /// the one nearest <paramref name="nearIndex"/>. Returns -1 when the document has no such
+    /// block.</summary>
+    /*  How the reader's place survives a reload. Identical blocks — two blank
+        table rows, two "See above." paragraphs — share a hash, so the nearest
+        candidate to where the anchor used to be wins: an edit moves blocks by
+        a few positions, never shuffles them. */
+    public int FindBlockByHash(ulong hash, int nearIndex)
+    {
+        var best = -1;
+        var bestDistance = int.MaxValue;
+        for (var index = 0; index < Blocks.Count; index++)
+        {
+            if (Blocks[index].Hash != hash)
+            {
+                continue;
+            }
+            var distance = Math.Abs(index - nearIndex);
+            if (distance < bestDistance)
+            {
+                best = index;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
     public static MarkdownDocumentModel Parse(string markdown, MarkdownPipeline pipeline, int tocMaxDepth = 6)
     {
         var text = ImageSizePreprocessorRegex().Replace(markdown, static match =>
@@ -105,10 +172,8 @@ internal sealed partial class MarkdownDocumentModel
         for (var index = 0; index < document.Count; index++)
         {
             var block = document[index];
-            var span = block.Span;
-            var start = Math.Clamp(span.Start, 0, Math.Max(0, text.Length - 1));
-            var end = Math.Clamp(span.End, start, Math.Max(0, text.Length - 1));
-            blocks.Add(new BlockInfo(block, start, end, Hash(text, start, end)));
+            var (start, end) = Extent(text, block);
+            blocks.Add(new BlockInfo(block, start, end, HashOf(text, block, start, end)));
 
             CollectHeadings(block, index, slugs, builder, headings, flatHeadings, anchors);
             CollectAnchors(block, index, anchors);
@@ -208,17 +273,82 @@ internal sealed partial class MarkdownDocumentModel
         }
     }
 
+    /*  Markdig gathers footnote definitions and link reference definitions out
+        of the flow and into a synthetic group block at the end of the document
+        — and gives that group a span covering the WHOLE file.
+
+        Taken at face value the group's "source" is then the entire document,
+        so its hash changes on every edit anywhere. That is not a cosmetic
+        problem: the group is the LAST block, the reload alignment works inward
+        from both ends of the document, and a last block that never matches
+        collapses the whole suffix. The result was a reader losing their place
+        and every visible block being rebuilt on every reload.
+
+        Both groups are containers whose children have honest spans, so the
+        group is described by its children instead. */
+    private static bool IsSyntheticGroup(Block block) =>
+        block is FootnoteGroup or LinkReferenceDefinitionGroup;
+
+    /// <summary>The source range a block really occupies, in <paramref name="text"/>.</summary>
+    private static (int Start, int End) Extent(string text, Block block)
+    {
+        var limit = Math.Max(0, text.Length - 1);
+
+        if (IsSyntheticGroup(block) && block is ContainerBlock group && group.Count > 0)
+        {
+            var first = int.MaxValue;
+            var last = -1;
+            foreach (var child in group)
+            {
+                first = Math.Min(first, child.Span.Start);
+                last = Math.Max(last, child.Span.End);
+            }
+            if (last >= 0)
+            {
+                var groupStart = Math.Clamp(first, 0, limit);
+                return (groupStart, Math.Clamp(last, groupStart, limit));
+            }
+        }
+
+        var start = Math.Clamp(block.Span.Start, 0, limit);
+        return (start, Math.Clamp(block.Span.End, start, limit));
+    }
+
+    /*  A group's definitions are scattered through the file, so its extent
+        covers text that belongs to other blocks; hashing that range would make
+        the group change whenever anything between its first and last
+        definition changed. The children's own slices, in order, are what the
+        group actually consists of. */
+    private static ulong HashOf(string text, Block block, int start, int end)
+    {
+        if (!IsSyntheticGroup(block) || block is not ContainerBlock group)
+        {
+            return Hash(text, start, end);
+        }
+
+        var limit = Math.Max(0, text.Length - 1);
+        var hash = OffsetBasis;
+        foreach (var child in group)
+        {
+            var childStart = Math.Clamp(child.Span.Start, 0, limit);
+            var childEnd = Math.Clamp(child.Span.End, childStart, limit);
+            hash = Hash(text, childStart, childEnd, hash);
+        }
+        return hash;
+    }
+
     /*  FNV-1a over the block's source slice. Used to recognise a block across a
         re-parse: a live reload keeps the height and the realized control of
         every block whose text did not change, and the scroll anchor survives
         edits elsewhere in the file. Not a security hash — collisions cost a
         re-measure, nothing more. */
-    private static ulong Hash(string text, int start, int end)
+    private const ulong OffsetBasis = 14695981039346656037;
+
+    private static ulong Hash(string text, int start, int end, ulong seed = OffsetBasis)
     {
-        const ulong offsetBasis = 14695981039346656037;
         const ulong prime = 1099511628211;
 
-        var hash = offsetBasis;
+        var hash = seed;
         for (var i = start; i <= end && i < text.Length; i++)
         {
             var c = text[i];

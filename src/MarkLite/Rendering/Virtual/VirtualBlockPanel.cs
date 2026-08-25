@@ -70,6 +70,13 @@ internal sealed class VirtualBlockPanel : Panel
     private double _stickyAnchorLastOffset;
     private int _stickyAnchorPasses;
 
+    private int _lastScrollTargetBlock = -1;
+
+    /*  Old block index to new, from the most recent reload. Empty whenever the
+        document did not come from a reload — a tab switch loads into a viewer
+        that was cleared, and there is nothing to align against. */
+    private int[] _alignment = [];
+
     /// <summary>Raised when a block gains controls, so a search can highlight it.</summary>
     public event Action<int, BlockContainer>? Realized;
 
@@ -137,14 +144,34 @@ internal sealed class VirtualBlockPanel : Panel
             var index = FirstVisibleBlock;
             return index < 0 ? (0, 0) : (index, (_scroller?.Offset.Y ?? 0) - BlockOffset(index));
         }
-        set => ScrollToBlock(value.Block, -value.OffsetWithin);
+        /*  Positive margin: the reader was that far INTO the block, so the
+            block's top sits that far above the viewport top. */
+        set => ScrollToBlock(value.Block, value.OffsetWithin);
     }
 
-    /// <summary>Replaces the document. Cached heights are kept: a reload of a lightly edited
-    /// file re-uses every block whose text did not change.</summary>
+    /// <summary>Replaces the document. Cached heights are kept, and every realized block whose
+    /// source text did not change keeps its controls: a reload of a lightly edited file leaves
+    /// the screen alone except where the edit actually landed.</summary>
     public void Load(MarkdownDocumentModel model, BlockRealizer realizer)
     {
-        RecycleAll();
+        /*  What is on screen right now, and the map that says where each of
+            those blocks went. Both have to be taken while the OLD model is
+            still installed: a reload re-parses into a new block list, and an
+            index means nothing across that boundary on its own. */
+        var carried = new List<(int OldIndex, BlockContainer Container)>(_realized.Count);
+        if (_model is not null)
+        {
+            foreach (var (index, container) in _realized)
+            {
+                if (index < _model.Blocks.Count)
+                {
+                    carried.Add((index, container));
+                }
+            }
+        }
+        _realized.Clear();
+
+        _alignment = _model is null ? [] : model.AlignFrom(_model);
 
         _model = model;
         _realizer = realizer;
@@ -156,6 +183,41 @@ internal sealed class VirtualBlockPanel : Panel
         _offsetsDirty = true;
 
         SeedHeightsFromCache();
+
+        var reused = 0;
+        foreach (var (oldIndex, container) in carried)
+        {
+            /*  The alignment, never a hash search: a document that repeats
+                itself would otherwise hand a container to some identical block
+                elsewhere in the file, and the block that really changed would
+                still count as re-used. */
+            var newIndex = TranslateFromPreviousLoad(oldIndex);
+            if (newIndex >= 0 && !_realized.ContainsKey(newIndex))
+            {
+                container.BlockIndex = newIndex;
+                _realized[newIndex] = container;
+                reused++;
+            }
+            else
+            {
+                container.SizeChanged -= OnBlockSizeChanged;
+                Children.Remove(container);
+            }
+        }
+        if (carried.Count > 0)
+        {
+            var aligned = 0;
+            foreach (var mapped in _alignment)
+            {
+                if (mapped >= 0)
+                {
+                    aligned++;
+                }
+            }
+            DebugLog.Write($"reload: reused {reused} of {carried.Count} containers, "
+                + $"{aligned} of {_alignment.Length} blocks aligned");
+        }
+
         InvalidateMeasure();
     }
 
@@ -167,6 +229,7 @@ internal sealed class VirtualBlockPanel : Panel
         RecycleAll();
         _model = null;
         _realizer = null;
+        _alignment = [];
         _heights = [];
         _measured = [];
         _offsets = [];
@@ -180,6 +243,9 @@ internal sealed class VirtualBlockPanel : Panel
     /// For a theme or font change, where the same text lays out differently.</summary>
     public void ResetLayout()
     {
+        //  Captured against the OLD heights, put back once the new ones exist.
+        var (block, within) = ScrollAnchor;
+
         _heightCache.Clear();
         RecycleAll();
         Array.Clear(_measured);
@@ -187,6 +253,7 @@ internal sealed class VirtualBlockPanel : Panel
         _measuredCount = 0;
         _offsetsDirty = true;
         SeedHeightsFromCache();
+        HoldAnchor(block, within);
         InvalidateMeasure();
     }
 
@@ -204,17 +271,73 @@ internal sealed class VirtualBlockPanel : Panel
 
     /// <summary>Scrolls a block to the top of the viewport, plus a margin (negative lifts the
     /// block down from the very edge).</summary>
-    public void ScrollToBlock(int index, double margin = 0)
+    public void ScrollToBlock(int index, double margin = 0) => ScrollToBlock(index, margin, 2);
+
+    /*  A jump aims at an offset that is partly guesswork: every unmeasured
+        block above the target contributes an estimate. Landing there realizes
+        and measures blocks, which moves the target's real offset — so the jump
+        is repeated once layout has settled, and again if it is still moving.
+        Bounded by the pass count, and skipped entirely when every block above
+        the target already has a measured height, because then nothing can
+        move. */
+    private void ScrollToBlock(int index, double margin, int correctionPasses)
     {
         if (_scroller is null || _model is null || _model.Blocks.Count == 0)
         {
             return;
         }
-        var index2 = Math.Clamp(index, 0, _model.Blocks.Count - 1);
-        var target = Math.Max(0, BlockOffset(index2) + margin);
-        _scroller.Offset = _scroller.Offset.WithY(target);
+        var target = Math.Clamp(index, 0, _model.Blocks.Count - 1);
+        _lastScrollTargetBlock = target;
+
+        var offset = Math.Max(0, BlockOffset(target) + margin);
+        _scroller.Offset = _scroller.Offset.WithY(offset);
         UpdateRealization();
+
+        if (correctionPasses <= 0 || IsMeasuredThrough(target))
+        {
+            return;
+        }
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_scroller is null || _model is null || target >= _model.Blocks.Count)
+            {
+                return;
+            }
+            var corrected = Math.Max(0, BlockOffset(target) + margin);
+            if (Math.Abs(corrected - _scroller.Offset.Y) > 0.5)
+            {
+                ScrollToBlock(target, margin, correctionPasses - 1);
+            }
+        }, DispatcherPriority.Background);
     }
+
+    /// <summary>True when the block and everything above it have real measured heights, so its
+    /// offset cannot move any further.</summary>
+    public bool IsMeasuredThrough(int index)
+    {
+        var last = Math.Min(index, _measured.Length - 1);
+        for (var i = 0; i <= last; i++)
+        {
+            if (!_measured[i])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Whether one block's height is measured rather than estimated.</summary>
+    public bool IsMeasured(int index) =>
+        index >= 0 && index < _measured.Length && _measured[index];
+
+    /// <summary>The block the last <see cref="ScrollToBlock"/> aimed at, or -1. Paired with
+    /// <see cref="BlockOffset"/> it says how far a jump actually landed from its target.</summary>
+    public int LastScrollTargetBlock => _lastScrollTargetBlock;
+
+    /// <summary>Where a block of the document loaded BEFORE the current one ended up, or -1 when
+    /// it changed, was deleted, or there was no previous document.</summary>
+    public int TranslateFromPreviousLoad(int previousIndex) =>
+        previousIndex >= 0 && previousIndex < _alignment.Length ? _alignment[previousIndex] : -1;
 
     /// <summary>The realized controls for a block, or null when it is not realized.</summary>
     public BlockContainer? GetRealized(int index) =>
@@ -222,6 +345,20 @@ internal sealed class VirtualBlockPanel : Panel
 
     /// <summary>Every realized block, for callers that need to walk what is on screen.</summary>
     public IReadOnlyDictionary<int, BlockContainer> RealizedBlocks => _realized;
+
+    /*  Pins the reader to one block across a run of layout passes. Used when
+        every height in the document becomes a guess at once — a width change, a
+        theme or font change — where correcting the offset a single time leaves
+        the reader wherever the estimates happened to land. The generous pass
+        cap is a safety net, not the normal exit: the hold is released as soon
+        as the block's offset stops moving. */
+    private void HoldAnchor(int block, double within)
+    {
+        _stickyAnchorBlock = block;
+        _stickyAnchorWithin = within;
+        _stickyAnchorLastOffset = double.NaN;
+        _stickyAnchorPasses = 40;
+    }
 
     // ────────────────────────────────────────────────────────── layout
 
@@ -244,12 +381,7 @@ internal sealed class VirtualBlockPanel : Panel
         if (widthChanged && _lastWidth > 0)
         {
             var (block, within) = ScrollAnchor;
-            _stickyAnchorBlock = block;
-            _stickyAnchorWithin = within;
-            _stickyAnchorLastOffset = double.NaN;
-            //  Generous cap: a safety net, not the normal exit — the anchor is
-            //  released as soon as its offset stops moving.
-            _stickyAnchorPasses = 40;
+            HoldAnchor(block, within);
         }
         if (widthChanged)
         {
@@ -559,13 +691,28 @@ internal sealed class VirtualBlockPanel : Panel
 
         var estimate = EstimatedHeight;
         var running = 0.0;
+        var previousDrawn = false;
         for (var index = 0; index < _heights.Length; index++)
         {
+            var height = _measured[index] ? _heights[index] : estimate;
+            /*  The gap goes BETWEEN drawn blocks, never around an empty one.
+                Some top-level blocks render to no controls at all — raw HTML,
+                YAML front matter, a link reference definition group — and
+                MarkView's own root panel spaces its CHILDREN, so a block that
+                contributes none costs nothing. Charging it the gap anyway
+                pushed everything below it 8 px down, which is exactly what a
+                capture comparison against the classic renderer caught on a
+                document that opens with an <img> tag. */
+            if (previousDrawn && height > 0)
+            {
+                running += BlockSpacing;
+            }
             _offsets[index] = running;
-            running += (_measured[index] ? _heights[index] : estimate) + BlockSpacing;
+            running += height;
+            previousDrawn = previousDrawn || height > 0;
         }
-        //  One past the end: the extent, without a trailing gap.
-        _offsets[^1] = Math.Max(0, running - BlockSpacing);
+        //  One past the end: the extent.
+        _offsets[^1] = running;
     }
 
     /// <summary>Index of the block containing a content-space offset.</summary>

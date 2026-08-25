@@ -63,6 +63,10 @@ internal sealed class VirtualBlockPanel : Panel
         the numbers on re-wraps nothing and invalidates no cached height. */
     private readonly GutterPanel _gutter;
 
+    /*  The selection highlight. Also a permanent child, and added BEFORE the
+        gutter and before any block so it draws underneath the glyphs. */
+    private SelectionAdorner? _adorner;
+
     private ScrollViewer? _scroller;
     private double _pendingScrollCorrection;
     private double? _pendingScrollTarget;
@@ -88,6 +92,19 @@ internal sealed class VirtualBlockPanel : Panel
     {
         _gutter = new GutterPanel(this);
         Children.Add(_gutter);
+    }
+
+    /// <summary>Installs the selection highlight. Called once, by the view that owns the
+    /// selection; the adorner is inserted at the bottom of the child order so blocks draw over
+    /// it.</summary>
+    public void AttachSelection(DocumentSelection selection)
+    {
+        if (_adorner is not null)
+        {
+            return;
+        }
+        _adorner = new SelectionAdorner(this, selection);
+        Children.Insert(0, _adorner);
     }
 
     /// <summary>Raised when a block gains controls, so a search can highlight it.</summary>
@@ -481,6 +498,7 @@ internal sealed class VirtualBlockPanel : Panel
 
         EnsureOffsets();
         _gutter.Measure(new Size(GutterPanel.Reserve, TotalExtent));
+        _adorner?.Measure(new Size(width, TotalExtent));
 
         if (_stickyAnchorPasses > 0 && _stickyAnchorBlock >= 0 && _heights.Length > 0)
         {
@@ -528,10 +546,12 @@ internal sealed class VirtualBlockPanel : Panel
             container.Arrange(new Rect(
                 GutterPanel.Reserve, _offsets[index], contentWidth, _heights[index]));
         }
-        //  As tall as the whole document, so a block's offset is the same number
-        //  in the gutter's coordinates as in the panel's.
+        //  Both are as tall as the whole document, so a block's offset is the
+        //  same number in their coordinates as in the panel's.
         _gutter.Arrange(new Rect(0, 0, GutterPanel.Reserve, TotalExtent));
         _gutter.InvalidateVisual();
+        _adorner?.Arrange(new Rect(0, 0, finalSize.Width, TotalExtent));
+        _adorner?.InvalidateVisual();
 
         SchedulePendingScroll();
 
@@ -802,6 +822,10 @@ internal sealed class VirtualBlockPanel : Panel
         lets the numbers overlap instead. */
     private static double ContentWidth(double panelWidth) =>
         Math.Max(120, panelWidth - (2 * GutterPanel.Reserve));
+
+    /// <summary>Index of the block containing a content-space offset — how a pointer position
+    /// becomes a place in the document.</summary>
+    public int BlockAtContentOffset(double y) => BlockAtOffset(y);
 
     /// <summary>Index of the block containing a content-space offset.</summary>
     private int BlockAtOffset(double y)

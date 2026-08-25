@@ -139,24 +139,103 @@ public partial class MainWindow
 
             case "select-all":
             {
-                var viewer = DebugViewer();
-                if (viewer is null)
+                if (DebugViewer() is null)
                 {
                     return "no viewer";
                 }
-                viewer.SelectAll();
-                return "selected";
+                SelectAllInDocument();
+                return ActiveSelection is { } all ? all.Describe() : "selected";
+            }
+
+            case "select":
+            {
+                /*  "select <block> <offset> <block> <offset>" — an endpoint pair
+                    in the document's own coordinates, which is what makes a
+                    selection assertable from outside: no pixels, and it works on
+                    blocks that have never been rendered. */
+                if (ActiveSelection is not { } selection)
+                {
+                    return "no model-backed selection (classic viewer)";
+                }
+                var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 4)
+                {
+                    return "usage: select <block> <offset> <block> <offset>";
+                }
+                selection.Set(
+                    new Rendering.Virtual.SelectionPoint((int)ParseDouble(parts[0]), (int)ParseDouble(parts[1])),
+                    new Rendering.Virtual.SelectionPoint((int)ParseDouble(parts[2]), (int)ParseDouble(parts[3])));
+                DebugLog.Write($"selection {selection.Describe()}");
+                return selection.Describe();
+            }
+
+            case "select-none":
+            {
+                ActiveSelection?.Clear();
+                return "cleared";
             }
 
             case "copy":
             {
-                var viewer = DebugViewer();
-                if (viewer is null)
+                if (DebugViewer() is null)
                 {
                     return "no viewer";
                 }
-                _ = viewer.CopyToClipboardAsync();
-                return "copied";
+                CopyDocumentSelection();
+                return ActiveSelection is { } current
+                    ? $"{current.CopyText().Length} chars"
+                    : "copied";
+            }
+
+            case "point-text":
+            case "point-link":
+            {
+                /*  "point-text <block> <offset>" / "point-link <block> [n]" —
+                    where that character or link is drawn, in SCREEN pixels.
+
+                    For the one kind of check the command channel cannot stand in
+                    for: press, drag, release and hover have to be exercised
+                    through the pointer plumbing itself, and a script outside the
+                    process cannot know where a character lands — that is the
+                    outcome of wrapping, theme metrics and the panel's layout.
+                    Reporting the point lets such a check aim exactly, instead of
+                    guessing pixels and quietly testing the margin. */
+                if (_activeTab?.Viewer is not Rendering.Virtual.VirtualMarkdownView pointView)
+                {
+                    return "no virtualizing viewer";
+                }
+                var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0)
+                {
+                    return $"usage: {verb} <block> <offset-or-ordinal>";
+                }
+                var target = (int)ParseDouble(parts[0]);
+                var second = parts.Length > 1 ? (int)ParseDouble(parts[1]) : 0;
+                var point = verb == "point-link"
+                    ? pointView.ScreenPointOfLink(target, second)
+                    : pointView.ScreenPointOfText(target, second);
+                return point is { } at ? $"{at.X},{at.Y}" : $"not drawn (block {target})";
+            }
+
+            case "click-link":
+            {
+                /*  "click-link <block> [n]" — follows a link the way a click on
+                    it would, with the point taken from the link's own layout.
+                    No input is injected: the command runs the same hit test and
+                    the same navigation the pointer handler runs. */
+                if (_activeTab?.Viewer is not Rendering.Virtual.VirtualMarkdownView view)
+                {
+                    return "no virtualizing viewer";
+                }
+                var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 0)
+                {
+                    return "usage: click-link <block> [ordinal]";
+                }
+                var block = (int)ParseDouble(parts[0]);
+                var ordinal = parts.Length > 1 ? (int)ParseDouble(parts[1]) : 0;
+                var url = view.ClickLinkInBlock(block, ordinal);
+                return url is null ? $"no link {ordinal} in block {block}" : url;
             }
 
             case "html-comments":
@@ -364,6 +443,11 @@ public partial class MainWindow
                 tell "the match was found in the model" from "the match is on
                 screen with a mark on it". */
             .Append(",\"highlighted\":").Append(_activeTab?.Search.HighlightedCount ?? 0)
+            /*  "12:5-14:80 (203 chars)", or empty when nothing is selected. The
+                endpoints are block:offset, so a check can assert on the exact
+                range it asked for without touching a pixel, and the character
+                count is the length of the markdown a copy would produce. */
+            .Append(",\"selection\":").Append(JsonString(ActiveSelection?.Describe() ?? string.Empty))
             .Append(",\"workingSetMb\":").Append(Number(process.WorkingSet64 / 1024.0 / 1024.0))
             .Append(",\"privateMb\":").Append(Number(process.PrivateMemorySize64 / 1024.0 / 1024.0))
             .Append(",\"managedMb\":").Append(Number(GC.GetTotalMemory(false) / 1024.0 / 1024.0))

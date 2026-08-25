@@ -38,6 +38,8 @@
                     <SolidColorBrush x:Key="MdSearchMatchBackground">#66E8C61C</SolidColorBrush>
                     <SolidColorBrush x:Key="MdSearchCurrentBackground">#FF9E2C</SolidColorBrush>
                     <SolidColorBrush x:Key="MdSearchCurrentForeground">#111418</SolidColorBrush>
+                    <!-- Selection is painted BEHIND the glyphs, so it has to be translucent. -->
+                    <SolidColorBrush x:Key="MdSelectionBackground">#596495ED</SolidColorBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="MdPageBackground">#1E1E1E</SolidColorBrush>
@@ -61,6 +63,7 @@
                     <SolidColorBrush x:Key="MdSearchMatchBackground">#59D4A72C</SolidColorBrush>
                     <SolidColorBrush x:Key="MdSearchCurrentBackground">#E8912D</SolidColorBrush>
                     <SolidColorBrush x:Key="MdSearchCurrentForeground">#141414</SolidColorBrush>
+                    <SolidColorBrush x:Key="MdSelectionBackground">#6E4A7FD4</SolidColorBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>

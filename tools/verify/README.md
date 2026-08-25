@@ -10,6 +10,21 @@ Ground rules:
   Scripts talk to the app over its debug command channel (a `cmd:` message on
   the single-instance pipe, enabled only when `MARKLITE_DEBUG=1`), read its
   stderr log, use UI Automation patterns, and capture with `PrintWindow`.
+  Where a check needs something a pointer would normally do — following a link,
+  making a selection — the command channel runs the same code the pointer
+  handler runs (`click-link`, `select`), computing the point from the layout
+  rather than moving a real cursor. **What no script here can cover** is
+  therefore the pointer plumbing itself: press-drag-release, the autoscroll while
+  dragging past the window edge, and the hand cursor on hover. Those were
+  verified once with injected input, under a one-off script kept OUTSIDE this
+  directory and with the user's explicit permission; a suite that moves the
+  user's cursor is not one anybody can run while working. Two commands from that
+  exercise are worth knowing about, because they are what makes aiming possible
+  at all: **`point-text <block> <offset>`** and **`point-link <block> [n]`**
+  report where a character or a link is drawn, in screen pixels. Nothing outside
+  the process can work that out — where a character lands is the outcome of
+  wrapping, theme metrics and the panel's layout — so a check that guesses
+  pixels is usually testing the margin.
 - Every script exits non-zero on the first failed assertion and prints
   `PASS`/`FAIL` lines so a future `run-all.ps1` can tabulate them.
 
@@ -73,6 +88,26 @@ Ground rules:
   setext). On a document over 1000 blocks it also re-checks the working set and
   the realized fraction with the numbers showing, because the gutter draws and
   must never build controls. Leaves the setting off.
+- **`test-selection.ps1 [-Exe path] [-CaptureDir dir]`** — selection, copy and
+  link clicks under the virtualizing viewer (sets `MARKLITE_VIRTUAL=1`). Copy
+  hands back the **markdown source** the selection covers, and the selection is
+  addressed by block and character, so it can span parts of the document that
+  were never rendered — both claims are checked against the file itself. A
+  generated 400-block fixture (one plain line per block, as `test-reload` does)
+  makes the mapping computable from outside the app, so `select 10 5 12 20` +
+  `copy` must put exactly those characters of the file on the clipboard;
+  `select-all` + `copy` must give back the whole file byte for byte, on the
+  generated fixture and on the 530 KB stress fixture; a range over 80 unrendered
+  blocks must copy correctly and realize none of them. `click-link <block>`
+  follows a link from the middle of the rectangle its own text layout reports,
+  through the same hit test a mouse click uses: an in-document anchor must
+  scroll and log `anchor link:`, and an external `https://` link must be
+  resolved and logged as `link would open externally:` and **not launched** —
+  `MARKLITE_DEBUG` suppresses the browser, so a verification run never opens
+  one. Finally a capture with three blocks selected must show the selection
+  colour where a capture with nothing selected does not.
+  **It uses the clipboard**, saving its text contents at the start and putting
+  them back at the end.
 - **`test-toc-search.ps1 [-Exe path] [-File doc.md] [-Term word]`** — contents
   sidebar (`toc <n>` scrolls and becomes the current section; under the
   virtualizing viewer it also lands the heading 8 px below the viewport top,

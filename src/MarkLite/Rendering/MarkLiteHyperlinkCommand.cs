@@ -51,6 +51,16 @@ internal sealed class MarkLiteHyperlinkCommand : ICommand
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri)
             && uri.Scheme is "http" or "https" or "mailto")
         {
+            /*  Under MARKLITE_DEBUG the URL is logged and NOT launched. That flag
+                is only ever set by the verification scripts, and a scripted link
+                click must not open the user's browser on their own desktop — the
+                assertion is that the right URL was resolved, which the log line
+                carries. */
+            if (DebugLog.Enabled)
+            {
+                DebugLog.Write($"link would open externally: {url}");
+                return;
+            }
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             DebugLog.Write($"link opened externally: {url}");
             return;

@@ -1097,14 +1097,107 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
-        if (e.Key == Key.Escape && _findVisible)
+        /*  Ctrl+A and Ctrl+C reach the document only when the focus is not in a
+            text box: in the find box they mean "select what I typed" and "copy
+            what I typed", which is what the box itself does with them. Same
+            reason the code panel's own SelectableTextBlock keeps its copy — a
+            reader who selected code inside one block expects Ctrl+C to give them
+            that, not the document selection. */
+        if (e.KeyModifiers == KeyModifiers.Control && !IsTextInputFocused())
         {
-            CloseFindBar();
-            e.Handled = true;
-            return;
+            if (e.Key == Key.A)
+            {
+                SelectAllInDocument();
+                e.Handled = true;
+                return;
+            }
+            if (e.Key == Key.C && !IsSelectableTextFocused())
+            {
+                CopyDocumentSelection();
+                e.Handled = true;
+                return;
+            }
+        }
+        if (e.Key == Key.Escape)
+        {
+            if (_findVisible)
+            {
+                CloseFindBar();
+                e.Handled = true;
+                return;
+            }
+            if (ActiveSelection is { IsEmpty: false } selection)
+            {
+                selection.Clear();
+                DebugLog.Write("selection cleared");
+                e.Handled = true;
+                return;
+            }
         }
         base.OnKeyDown(e);
     }
+
+    #region selection and copy
+
+    /// <summary>The active document's selection, or null under the classic viewer, which keeps
+    /// its own inside MarkView.</summary>
+    private DocumentSelection? ActiveSelection =>
+        (_activeTab?.Viewer ?? _welcomeViewer) is VirtualMarkdownView view ? view.Selection : null;
+
+    private bool IsTextInputFocused() => FocusManager?.GetFocusedElement() is TextBox;
+
+    private bool IsSelectableTextFocused() =>
+        FocusManager?.GetFocusedElement() is SelectableTextBlock;
+
+    private void OnSelectAllClicked(object? sender, RoutedEventArgs e) => SelectAllInDocument();
+
+    private void OnCopyClicked(object? sender, RoutedEventArgs e) => CopyDocumentSelection();
+
+    private void SelectAllInDocument()
+    {
+        if (ActiveSelection is { } selection)
+        {
+            selection.SelectAll();
+            DebugLog.Write($"selection {selection.Describe()}");
+            return;
+        }
+        //  Classic viewer: MarkView's own layer covers the whole rendered tree.
+        (_activeTab?.Viewer ?? _welcomeViewer)?.SelectAll();
+    }
+
+    /*  Copy hands over the MARKDOWN SOURCE the selection covers, not the
+        rendered text — the decision recorded for this viewer: what a reader
+        pastes elsewhere should be the document they are reading, tables, links
+        and code fences intact. */
+    private void CopyDocumentSelection()
+    {
+        if (ActiveSelection is not { } selection)
+        {
+            _ = (_activeTab?.Viewer ?? _welcomeViewer)?.CopyToClipboardAsync();
+            return;
+        }
+
+        var text = selection.CopyText();
+        if (text.Length == 0)
+        {
+            DebugLog.Write("copy: nothing selected");
+            return;
+        }
+        if (Clipboard is null)
+        {
+            DebugLog.Write("copy: no clipboard");
+            return;
+        }
+        /*  Avalonia 12 has no SetTextAsync: the clipboard takes a data transfer,
+            which is also what makes it possible to offer several formats later
+            without changing the call site. */
+        var transfer = new DataTransfer();
+        transfer.Add(DataTransferItem.CreateText(text));
+        _ = Clipboard.SetDataAsync(transfer);
+        DebugLog.Write($"copied {text.Length} chars of markdown");
+    }
+
+    #endregion
 
     #region in-document search
 

@@ -62,6 +62,9 @@
                 <MenuItem Header="E_xit" Click="OnExitClicked" />
             </MenuItem>
             <MenuItem Header="_Edit">
+                <MenuItem Header="_Copy" Click="OnCopyClicked" InputGesture="Ctrl+C" />
+                <MenuItem Header="Select _all" Click="OnSelectAllClicked" InputGesture="Ctrl+A" />
+                <Separator />
                 <MenuItem Header="_Find…" Click="OnFindClicked" InputGesture="Ctrl+F" />
             </MenuItem>
             <MenuItem Header="_View">

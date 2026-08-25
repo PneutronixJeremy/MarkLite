@@ -1401,12 +1401,12 @@ Five things that were not obvious:
   `test-html-comments` ALL PASS (9), `test-tabs` ALL PASS (14). **PASS**
 
 ## Phase 6: Links, hover cursor, selection, copy
-Status: Not started
+Status: Complete
 
 Replaces MarkView's internal selection layer and hyperlink hit-test, which
 the virtual view never instantiates.
 
-- [ ] Hyperlink hit-test: tunnel `PointerPressed`/`PointerReleased` on the
+- [x] Hyperlink hit-test: tunnel `PointerPressed`/`PointerReleased` on the
   view; find the `TextBlock` under the pointer among realized containers,
   `TextLayout.HitTestPoint` → character index → walk `Inlines` (recursing
   `Span`s) to the `MarkdownHyperlink` covering that index → `NavigateUri` →
@@ -1414,22 +1414,22 @@ the virtual view never instantiates.
   inside a hyperlink) handled by walking up from the hit `Image`. Hand
   cursor on hover via the same test on `PointerMoved` (throttled to the
   hovered block).
-- [ ] Selection model: `anchor`/`focus` = (block index, character offset in
+- [x] Selection model: `anchor`/`focus` = (block index, character offset in
   the block's rendered text); drag updates focus; dragging past the top or
   bottom edge autoscrolls on a `DispatcherTimer` (realizing blocks as they
   enter the window); Ctrl+A selects (0,0)–(last, end); Escape/click clears.
-- [ ] Selection adorner: one overlay control over the panel drawing
+- [x] Selection adorner: one overlay control over the panel drawing
   `TextLayout.HitTestTextRange` rects for realized blocks inside the range;
   fully covered unrealized blocks draw nothing (they are off-screen by
   definition). Uses the app's existing selection brush.
-- [ ] Copy (Ctrl+C, context or menu item if one exists today): markdown
+- [x] Copy (Ctrl+C, context or menu item if one exists today): markdown
   source slice. Endpoints map through inline `SourceSpan`s when the block's
   inline at that offset is a `LiteralInline`/`CodeInline` (character
   precise); otherwise fall back to the block boundary. Ctrl+A + Ctrl+C =
   the whole file text. Code blocks keep their own `SelectableTextBlock`
   copy (already there) and are treated as whole blocks by the document
   selection.
-- [ ] Debug commands `select-all`, `copy`, `select <b1> <o1> <b2> <o2>`;
+- [x] Debug commands `select-all`, `copy`, `select <b1> <o1> <b2> <o2>`;
   `dump-state` gains `selection`.
 
 ### Verification Plan
@@ -1451,7 +1451,178 @@ the virtual view never instantiates.
   highlight on all three.
 
 ### Phase Summary
-_(write when phase completes)_
+Links click, text selects, and Ctrl+C gives back markdown. `dotnet test` is at
+53 tests; `test-selection` is new at 26 checks. Selecting all 2074 blocks of the
+530 KB stress fixture and copying puts **540,951 characters — every byte of the
+file — on the clipboard**, with 14 blocks realized.
+
+- **The selection is a MODEL range**: `SelectionPoint` is (block index,
+  character offset in that block's text), the same kind of address the scroll
+  anchor uses, so it survives recycling, re-measuring and re-parsing and can
+  cover blocks that have never had controls. A range over 80 unrendered blocks
+  copies correctly and realizes none of them — asserted.
+- **Copy hands back the markdown source.** `MarkdownDocumentModel` gained a
+  second output from the Phase 5 projection walk: the runs of the projection that
+  came verbatim from the file, and `SourceOffset(block, offset, atEnd)` on top of
+  them. Inside a run it is exact; between runs it snaps outward, a start forward
+  to the next real character and an end back to the last one, so an endpoint
+  never drags in markup the reader could not see. Selecting the words of a
+  heading gives the words; everything BETWEEN the endpoints is the file verbatim,
+  so a selection crossing a table, a link or a code fence pastes as markdown.
+- **A selection that reaches an end of the document takes that end of the file
+  with it**, rather than the first or last block's own extent — which is what
+  makes Ctrl+A + Ctrl+C byte-identical to the file including front matter and the
+  trailing newline.
+- **`BlockTextIndex`** is the rendered-text side: one realized block's TextBlocks
+  concatenated in visual order (which is document order) with a newline between
+  them, exactly the separator the model's projection uses — that is what lets an
+  offset counted on screen be handed to the model. Built on demand per realized
+  block, dropped when the block is recycled.
+- **`HyperlinkHitTest`** replaces MarkView's internal hit test, which walks an
+  index of the whole rendered document. It looks only at the block under the
+  pointer: layout position → the innermost `MarkdownHyperlink` span covering it.
+  Image links are handled from the other end, walking up from the hit `Image` to
+  the `InlineUIContainer` that holds it.
+- **`SelectionAdorner`** paints the highlight: one control drawing
+  `HitTestTextRange` rectangles, a permanent child inserted at the BOTTOM of the
+  panel's children so the band sits behind the glyphs. Selection changes on every
+  pointer move during a drag; re-laying out the text of every crossed block per
+  frame is not affordable, a rectangle per line is.
+- **Dragging past the window edge keeps selecting**, on a 50 ms timer whose step
+  is proportional to the overshoot. The pointer has not moved but the content
+  under it has, so the drag point is kept in both the viewport's and the panel's
+  coordinates and the focus is recomputed from the latter.
+- **Edit > Copy and Edit > Select all**, with Ctrl+C and Ctrl+A, and both stay
+  out of the way where they mean something else: the find box keeps them for its
+  own text, and a code block keeps them for the `SelectableTextBlock` inside it,
+  which is also why a press that starts inside a code block is left alone.
+  Escape clears the selection.
+- **`MdSelectionBackground`** is new in `App.axaml` for both variants — the app
+  had no selection brush of its own, and MarkView's is a private field. It has to
+  be translucent, because it is painted underneath the text.
+- **Debug channel**: `select <b> <o> <b> <o>`, `select-none`, `select-all` and
+  `copy` now drive the model-backed selection, and `dump-state` gains
+  `selection` ("12:5-14:80 (203 chars)") — a range assertable without a pixel.
+
+Five things worth knowing:
+
+- **Markdig's inline spans are NOT document-absolute inside a table.** Cells are
+  parsed out of a slice of the row, and their inlines carry offsets relative to
+  that slice — so a cell's text claimed a source offset near the top of the file,
+  and copying a cell would have handed back a plausible-looking slice of the
+  wrong part of the document. Every claimed offset is now CHECKED against the
+  source before it is believed, and repaired by looking for the same characters
+  further on inside the same block, from where the previous run ended. A test
+  with the same word in two cells pins that the repair finds the right one, and a
+  test over the whole stress fixture pins that every one of its 15,000-odd runs
+  really does say what the source says at the offset it claims.
+- **`TextHitTestResult.IsInside` answers a different question than it looks
+  like.** Gating the link hit test on it lost real clicks: the flag came back
+  false for a point demonstrably on top of the glyphs — measured, at the exact
+  centre of the rectangle the layout itself reported for that link. The hit is
+  now confirmed against the link's own rectangles instead, which is both stricter
+  (a click in the empty space right of a short line no longer follows whatever
+  link ended that line) and exact.
+- **A text layout and a block's text do not have the same number of
+  characters.** An embedded control — an inline image, a rendered formula —
+  occupies one position in the layout and contributes none to the text, because
+  it is a picture and neither search nor copy can produce it. Everything that
+  hit-tests or paints therefore converts between the two counts; without it a
+  selection in a paragraph containing an image would copy a slice shifted by one
+  character per image before it.
+- **Visual hit testing was the wrong tool for "what is under the pointer".** The
+  first version used `GetVisualsAt`, which has to reckon with everything
+  transparent to hit testing — a Border with no background, the adorner, the
+  gutter — and answers differently depending on what is on top. The panel already
+  knows which block owns a content offset, and the selection uses that answer, so
+  the link hit test now uses it too and the two agree by construction.
+- **The adorner shares the PANEL's coordinate space, not the container's.** The
+  first version translated a TextBlock's origin only as far as its container,
+  which is arranged inset by the gutter strip — so the band was painted 40 px
+  left of the text it belonged to. Visible in the capture, invisible in every
+  numeric check, which is why the capture is part of the verification.
+
+**The pointer plumbing was verified with INJECTED INPUT, once, with the user's
+explicit permission (2026-08-25).** Press-drag-release, the autoscroll while
+dragging past the window edge and the hand cursor on hover cannot be reached from
+the command channel — they are the plumbing the command channel stands in for —
+so a one-off script synthesised real mouse input against the published exe. It is
+NOT in `tools/verify/`, and must not be: that directory is injection-free by rule,
+and a suite that moves the user's cursor is not one anybody can run while working.
+What survives in the repo are the two debug commands it needed, which are useful
+on their own:
+
+- **`point-text <block> <offset>`** and **`point-link <block> [n]`** report where
+  a character or a link is DRAWN, in screen pixels. A check outside the process
+  cannot know that — where a character lands is the outcome of wrapping, theme
+  metrics and the panel's layout — so aiming without asking means guessing pixels
+  and quietly testing the margin instead. With them, a synthesised drag from
+  (block 4, offset 0) to (block 6, offset 30) can be asserted to select exactly
+  `4:0-6:30`, which is what it did.
+
+Two things the injected run established that no numeric check had:
+
+- **The hand cursor has to be set on the PANEL, not on the view.** MarkView's own
+  pointer handler writes a cursor onto the viewer on every move and would reset
+  anything set there; Avalonia resolves the cursor from the element under the
+  pointer upward, so the panel — below the viewer, above every block — wins. The
+  hover check reads the real system cursor through `GetCursorInfo`, so it is the
+  cursor the user would see, not a property MarkLite believes it set.
+- **Autoscroll is proportional, and gentle where it should be.** Held 20 px past
+  the bottom edge the document creeps 176 px in a second; held 400 px past it
+  moves 700 px in the same time. A reader nudging past the edge does not want the
+  document to bolt.
+
+### Verification Plan results
+- `dotnet test` → **53 passed, 0 failed**. Ten new, all on the offset-to-source
+  mapping: exact inside a paragraph; a heading copying its words and not its
+  hashes; across emphasis (both the endpoints and the markers kept between them);
+  per line inside a code fence; through a code span's backticks; table cells,
+  including two cells holding the same word; a decoded entity not indexed into
+  while its neighbours are; a block that projects nothing falling back to its own
+  extent; and every verbatim run of the entire stress fixture matching the source
+  at the offset it claims. **PASS**
+- `test-selection.ps1` → **ALL PASS (26 checks)**. `select 10 5 12 20` + `copy`
+  put exactly the 159 characters those offsets name in the file on the clipboard;
+  `select 300 0 380 10` copied 5930 characters across 80 blocks that have no
+  controls and realized none of them (30 realized before and after);
+  `select-all` + `copy` returned the generated fixture's 29,380 characters and
+  the stress fixture's **540,951** — character for character in both cases, with
+  14 blocks realized. `dump-state` reported `10:5-12:20 (159 chars)` and
+  `4:10-8:30 (1160 chars)`, and that 1160-character slice appears verbatim in the
+  file. **PASS**
+- Link clicks, no input injected: `click-link 4` on the stress fixture followed
+  `https://example.invalid/kestrel/handbook` — logged as
+  `link would open externally:` with **zero** `link opened externally:` lines, so
+  no browser was launched — and `click-link 5` followed `#station-overview`,
+  which scrolled the document and logged `anchor link: #station-overview`.
+  `click-link 2000`, on a block with no controls, reports no link rather than
+  throwing. **PASS**
+- Capture, selection over three blocks: **55,420** selection-coloured pixels
+  against **3,417** with nothing selected, over **345** rows against 284. By eye
+  the band aligns with the text and sits behind the glyphs, three paragraphs
+  covered end to end. **PASS**
+- Pointer plumbing, **injected input**, one-off script outside `tools/verify/`,
+  run with the user's explicit permission → **ALL PASS (16 checks)**. Hovering a
+  link shows the hand cursor and hovering prose does not, read from the real
+  system cursor. A press at (block 4, offset 0) dragged in twenty steps to
+  (block 6, offset 30) and released selected exactly `4:0-6:30` — 653 characters
+  of markdown — and the release did not disturb it. Held 20 px below the window
+  the document scrolled 176 px in a second; held 400 px below, 700 px; the
+  selection followed to block 16 with 16 blocks realized. A real click on a link
+  logged `link clicked:` and scrolled to its anchor, and a click that did not
+  move left no selection behind. No exceptions. The script raises the window
+  without activating it, refuses to send any button event unless
+  `WindowFromPoint` says MarkLite's own window is under the pointer, and puts the
+  caller's cursor position back. **PASS**
+- Regression, **virtual renderer**: `test-virtual` ALL PASS (24), `test-reload`
+  ALL PASS (17), `test-gutter` ALL PASS (19), `test-html-comments` ALL PASS (9),
+  `test-tabs` ALL PASS (14), `test-toc-search` ALL PASS (39, 1 skipped) on
+  `sample-plan.md` and ALL PASS (42) on `stress-large.md`. **PASS**
+- Regression, **classic renderer**: `test-tabs` ALL PASS (14),
+  `test-html-comments` ALL PASS (9), `test-toc-search` ALL PASS (18, 1 skipped)
+  and ALL PASS (19). The classic path keeps MarkView's own selection and hit
+  test; nothing in this phase touches it. **PASS**
 
 ## Phase 7: Cutover and cleanup
 Status: Not started

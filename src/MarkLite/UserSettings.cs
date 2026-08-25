@@ -34,6 +34,31 @@ internal static class UserSettings
         }
     }
 
+    /*  View > Show line numbers. Default OFF: the gutter answers "where is this
+        in the file", which is a question only some readers are asking. The
+        space it draws in is reserved either way, so the setting changes nothing
+        about the document's layout. */
+    internal static bool? ShowLineNumbers
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(KeyPath);
+            return key?.GetValue("ShowLineNumbers") is int stored ? stored != 0 : null;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(KeyPath);
+            if (value is null)
+            {
+                key.DeleteValue("ShowLineNumbers", throwOnMissingValue: false);
+            }
+            else
+            {
+                key.SetValue("ShowLineNumbers", value.Value ? 1 : 0, RegistryValueKind.DWord);
+            }
+        }
+    }
+
     /// <summary>The chosen body font spec (e.g. "fonts:MarkLite#Roboto"), or null when never set.</summary>
     internal static string? BodyFontFamily
     {

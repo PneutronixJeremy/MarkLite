@@ -160,6 +160,15 @@ public partial class MainWindow : Window
             DebugLog.Write($"html comments restored: {(showComments ? "shown" : "hidden")}");
         }
 
+        /*  Line numbers: read before the first render, like the comment
+            toggle. Unset means off. */
+        if (UserSettings.ShowLineNumbers is { } showLineNumbers)
+        {
+            GutterPanel.Enabled = showLineNumbers;
+            this.FindControl<MenuItem>("ShowLineNumbersItem")!.IsChecked = showLineNumbers;
+            DebugLog.Write($"line numbers restored: {(showLineNumbers ? "shown" : "hidden")}");
+        }
+
         /*  Body font: the saved choice first, then the MARKLITE_BODYFONT
             debug/testing env hook on top (scripted font checks can't click
             menus). Both run before the first render. */
@@ -410,7 +419,14 @@ public partial class MainWindow : Window
             ? new VirtualMarkdownView()
             : new MarkdownViewer { Pipeline = MarkLitePipeline.Shared };
         viewer.MaxWidth = 1100;
-        viewer.Margin = new Thickness(28, 6, 28, 0);
+        /*  The virtual view reserves a strip on each side of the document for
+            the line-number gutter, so it needs less outer margin to end up with
+            a comparable text column; the classic view has no gutter and keeps
+            the original margins. Both are symmetric, so the document stays
+            centred either way. */
+        viewer.Margin = UseVirtualViewer
+            ? new Thickness(8, 6, 8, 0)
+            : new Thickness(28, 6, 28, 0);
         /*  The sidebar shows every heading level, and the entries are paired
             positionally with the model's (or the rendered tree's) headings — a
             shallower depth would drop deep headings from the list while their
@@ -441,6 +457,34 @@ public partial class MainWindow : Window
             only shows after a re-render — the same reason a font or theme
             change re-renders. */
         RerenderAllTabs();
+    }
+
+    /// <summary>View > Show line numbers. The gutter's width is reserved either way, so this
+    /// only decides whether the numbers are drawn.</summary>
+    private void OnShowLineNumbersClicked(object? sender, RoutedEventArgs e)
+    {
+        SetLineNumbersVisible(!GutterPanel.Enabled);
+    }
+
+    private void SetLineNumbersVisible(bool visible)
+    {
+        GutterPanel.Enabled = visible;
+        UserSettings.ShowLineNumbers = visible;
+        this.FindControl<MenuItem>("ShowLineNumbersItem")!.IsChecked = visible;
+        DebugLog.Write($"line numbers: {(visible ? "shown" : "hidden")}");
+
+        /*  A repaint, not a re-render: the strip is already reserved, so nothing
+            moves and no block has to be rebuilt. The classic viewer has no
+            gutter at all — it dies at the cutover — so there is nothing to
+            repaint there. */
+        if (_activeTab?.Viewer is VirtualMarkdownView virtualView)
+        {
+            virtualView.Panel.InvalidateGutter();
+        }
+        else
+        {
+            DebugLog.Write("line numbers: classic viewer has no gutter");
+        }
     }
 
     /// <summary>View > Body font. Swaps the app-level font token and re-renders.</summary>

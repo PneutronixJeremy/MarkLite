@@ -61,6 +61,18 @@ Ground rules:
   same paragraph each time and that only genuinely changed blocks are rebuilt
   (`reload: reused <n> of <m> containers, <a> of <b> blocks aligned`). Edits are
   file writes; the app's own watcher notices them.
+- **`test-gutter.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** — the
+  line-number gutter (sets `MARKLITE_VIRTUAL=1`). The strip is reserved on both
+  sides of the document whether the numbers show or not, so the toggle has to be
+  free: a full-resolution capture diff between the two states must find every
+  differing pixel inside one strip's width, with the block count, realized set,
+  extent, scroll offset and visible lines all unchanged. The numbers are checked
+  against the source file rather than a screenshot — `dump-state` reports the
+  first and last visible source line and `targetBlockLine`, so a `toc <n>` jump
+  can be confirmed to have landed on a line that really is a heading (ATX or
+  setext). On a document over 1000 blocks it also re-checks the working set and
+  the realized fraction with the numbers showing, because the gutter draws and
+  must never build controls. Leaves the setting off.
 - **`test-toc-search.ps1 [-Exe path] [-File doc.md] [-Term word]`** — contents
   sidebar (`toc <n>` scrolls and becomes the current section; under the
   virtualizing viewer it also lands the heading 8 px below the viewport top,

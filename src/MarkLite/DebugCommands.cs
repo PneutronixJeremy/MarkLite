@@ -165,6 +165,13 @@ public partial class MainWindow
                 return visible ? "shown" : "hidden";
             }
 
+                        case "gutter":
+            {
+                var showLines = !string.Equals(argument, "off", StringComparison.OrdinalIgnoreCase);
+                SetLineNumbersVisible(showLines);
+                return showLines ? "shown" : "hidden";
+            }
+
             case "gc":
             {
                 GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
@@ -278,6 +285,7 @@ public partial class MainWindow
             var anchorWithin = panel.FirstVisibleBlock >= 0
                 ? (_activeTab.Scroller?.Offset.Y ?? 0) - panel.BlockOffset(panel.FirstVisibleBlock)
                 : 0;
+            var (firstLine, lastLine) = panel.VisibleSourceLines;
             builder.Append(",\"virtual\":true")
                 .Append(",\"blocks\":").Append(panel.BlockCount)
                 .Append(",\"realizedBlocks\":").Append(panel.RealizedBlockCount)
@@ -286,24 +294,38 @@ public partial class MainWindow
                 .Append(",\"lastRealized\":").Append(lastRealized)
                 .Append(",\"firstVisibleBlock\":").Append(panel.FirstVisibleBlock)
                 .Append(",\"anchorWithin\":").Append(Number(anchorWithin))
+                /*  What the gutter is showing: a check can compare these
+                    against a grep of the fixture without reading pixels. */
+                .Append(",\"firstVisibleLine\":").Append(firstLine)
+                .Append(",\"lastVisibleLine\":").Append(lastLine)
                 /*  Where the last jump aimed and where that block actually sits
                     now: their difference against scrollY is how far off a
                     heading jump landed once the correction pass has run. */
                 .Append(",\"targetBlock\":").Append(panel.LastScrollTargetBlock)
                 .Append(",\"targetBlockOffset\":").Append(Number(
-                    panel.LastScrollTargetBlock >= 0 ? panel.BlockOffset(panel.LastScrollTargetBlock) : 0));
+                    panel.LastScrollTargetBlock >= 0 ? panel.BlockOffset(panel.LastScrollTargetBlock) : 0))
+                /*  The source line the gutter draws for that block, so a check
+                    can confirm a heading jump landed on a heading LINE of the
+                    file without reading pixels. */
+                .Append(",\"targetBlockLine\":").Append(
+                    panel.LastScrollTargetBlock >= 0 && virtualView.Model is { } targetModel
+                    && panel.LastScrollTargetBlock < targetModel.Blocks.Count
+                        ? targetModel.Blocks[panel.LastScrollTargetBlock].StartLine
+                        : 0);
         }
         else
         {
             builder.Append(",\"virtual\":false,\"blocks\":0,\"realizedBlocks\":0")
                 .Append(",\"measuredBlocks\":0,\"firstRealized\":-1,\"lastRealized\":-1")
                 .Append(",\"firstVisibleBlock\":-1,\"anchorWithin\":0")
-                .Append(",\"targetBlock\":-1,\"targetBlockOffset\":0");
+                .Append(",\"firstVisibleLine\":0,\"lastVisibleLine\":0")
+                .Append(",\"targetBlock\":-1,\"targetBlockOffset\":0,\"targetBlockLine\":0");
         }
 
         builder.Append(",\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))
             .Append(",\"tocCount\":").Append(_activeTab?.TocEntries.Count ?? 0)
             .Append(",\"tocIndex\":").Append(_currentTocIndex)
+            .Append(",\"gutterVisible\":").Append(Rendering.Virtual.GutterPanel.Enabled ? "true" : "false")
             .Append(",\"findVisible\":").Append(_findVisible ? "true" : "false")
             .Append(",\"matches\":").Append(_activeTab?.Search.Count ?? 0)
             .Append(",\"matchIndex\":").Append(_activeTab?.Search.CurrentOrdinal ?? -1)

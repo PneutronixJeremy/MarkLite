@@ -1100,31 +1100,31 @@ One item is deliberately **not** done, and is carried to Phase 7:
   measurable.
 
 ## Phase 4A: Line-number gutter (View toggle)
-Status: Not started
+Status: Complete
 
 A left margin showing where each block starts in the source, so what is on
 screen can be found again in the editor. Built on the Phase 3 model
 (`Markdig.Block.Span` → source line) and the Phase 4 anchor work.
 
-- [ ] `MarkdownDocumentModel`: per-block `StartLine` (and `EndLine`) computed
+- [x] `MarkdownDocumentModel`: per-block `StartLine` (and `EndLine`) computed
   once from the source text — a prefix array of newline offsets, binary-searched
   per block span. Test: line numbers of the first and last block on each
   fixture; setext heading reports its text line, not the underline.
-- [ ] `Rendering/Virtual/GutterPanel`: drawn beside `VirtualBlockPanel`, sharing
+- [x] `Rendering/Virtual/GutterPanel`: drawn beside `VirtualBlockPanel`, sharing
   its scroll offset and per-block Y positions; one right-aligned number per
   realized block at the block's top; recycled with the blocks it labels. Uses
   the code font, muted foreground, fixed width sized to the document's largest
   line number (so the text column does not shift while scrolling).
-- [ ] Fenced code blocks get **line-by-line** numbers: the code renderer
+- [x] Fenced code blocks get **line-by-line** numbers: the code renderer
   already lays lines out 1:1, so the gutter labels each row from the block's
   start line. Every other block gets a single number at its top; wrapped rows
   stay unnumbered.
-- [ ] View menu `Show line numbers` checkbox (default off) + `UserSettings`
+- [x] View menu `Show line numbers` checkbox (default off) + `UserSettings`
   persistence + debug command `gutter <on|off>`; `dump-state` gains
   `gutterVisible` and the first/last visible source line.
-- [ ] Layout: the gutter is outside the document's `MaxWidth` centering, so
+- [x] Layout: the gutter is outside the document's `MaxWidth` centering, so
   turning it on must not reflow the text column (verified by capture diff).
-- [ ] `tools/verify/test-gutter.ps1`: toggle on → `dump-state` first visible
+- [x] `tools/verify/test-gutter.ps1`: toggle on → `dump-state` first visible
   source line matches the line computed from the fixture for the first visible
   block (±0); scroll to a known heading via `toc <n>` and compare against the
   fixture's grep line number; captures with the toggle on and off.
@@ -1138,7 +1138,98 @@ screen can be found again in the editor. Built on the Phase 3 model
   (< 100 MB) and realized block count is unchanged.
 
 ### Phase Summary
-_(write when phase completes)_
+A muted column of source line numbers down the left of the document, off by
+default, and free to turn on: the strip it draws in is reserved whether the
+numbers show or not, so the toggle repaints 20 px of pixels and touches nothing
+else.
+
+- **`MarkdownDocumentModel` blocks carry `StartLine`/`EndLine`** (1-based),
+  computed from the block's span against a prefix array of newline offsets built
+  once per parse. From the span rather than Markdig's own `Block.Line`, so the
+  numbers agree with the source slice the model hands out — and so the synthetic
+  footnote and link-reference groups, whose `Line` is meaningless, report the
+  lines their definitions are actually on.
+- **`Rendering/Virtual/GutterPanel`** is a `Control` that draws rather than
+  building controls: one `FormattedText` per realized block, right-aligned
+  against the gap. A number per block — and per LINE of every code fence — as
+  TextBlocks would be exactly the tree the virtualizing host exists to avoid. It
+  is a permanent child of `VirtualBlockPanel`, arranged over the full document
+  height, so a block's offset means the same number in both coordinate spaces
+  and no scroll offset has to be tracked.
+- **Fenced code is numbered line by line**, read off the code `TextBlock`'s own
+  `TextLayout.TextLines` rather than multiplied out from a line height, so the
+  numbers stay aligned if a theme changes the code font or its spacing. The fence
+  line is the block's start, so the first line of code is one past it.
+- **`VirtualBlockPanel` reserves the strip on BOTH sides**, always. That is the
+  whole design: the document stays centred, and turning the numbers on re-wraps
+  no text, moves no block and invalidates not one cached height.
+- **View > Show line numbers**, default off, persisted in
+  `UserSettings.ShowLineNumbers`, plus a `gutter <on|off>` debug command.
+  `dump-state` gains `gutterVisible`, `firstVisibleLine`, `lastVisibleLine` and
+  `targetBlockLine`, so the numbers can be checked against a grep of the fixture
+  instead of against pixels.
+
+Three things worth knowing:
+
+- **The plan's layout constraint could not be met as written.** "The gutter is
+  outside the document's `MaxWidth` centering" assumes spare room outside the
+  centred box, and at the verification window size there is none: the sidebar
+  leaves `ViewerHost` about 1015 px wide, so a `MaxWidth` of 1100 never binds and
+  the text column already fills the space. Resolved with the user (2026-08-25):
+  reserve the strip permanently on both sides so the *toggle* never reflows, and
+  accept a one-time narrowing of the text column. The virtual viewer's outer
+  margin drops from 28 px to 8 px to pay for part of it; the classic viewer is
+  untouched, so classic and virtual captures now differ by that shift — expected,
+  and it goes away with the classic path at the cutover.
+- **Prose is selectable too.** The first version found the code text by looking
+  for a `SelectableTextBlock` in the container, which also matches paragraphs —
+  and numbering a paragraph's *wrapped* rows invents source lines that do not
+  exist. The guard is the block type (`CodeBlock`, mermaid fences excluded), not
+  the control type.
+- **A group block's number can read lower than the block above it.** Footnote and
+  link-reference definitions are gathered to the end of the document but their
+  source lines are wherever they were written, so a file that defines them
+  mid-document shows a number going backwards at the very bottom. That is the
+  truth about where the text lives, and the fixtures keep their definitions at
+  the end, so it does not arise there.
+
+### Verification Plan results
+- `dotnet test` → **30 passed, 0 failed**. Five new: source lines per block
+  (including a two-line paragraph), identical line numbers under CRLF and LF, a
+  setext heading reporting its text line rather than its underline, a fenced
+  block spanning its fence lines, and the stress fixture's numbers running
+  monotonically from line 1 to inside the file's 5868 lines. **PASS**
+- `test-gutter.ps1` → **ALL PASS (19 checks)** on `sample-plan.md`, **ALL PASS
+  (21)** on `stress-large.md`. The toggle's full-resolution capture diff finds
+  every differing pixel in **x 423..442 — a 20 px band** inside the 40 px strip,
+  with block count, realized set, extent, scroll offset and visible lines all
+  unchanged. `toc 5` lands on source line 35 (`sample-plan.md`) and 94
+  (`stress-large.md`), both real heading lines, both on screen. The setting
+  survives a restart. **PASS**
+- Line numbers spot-checked against the source by hand: at `toc 6` on
+  `sample-plan.md` the gutter reads 40, 41, 43, 47 for the heading, status line,
+  task list and lead-in, then 50..64 down the code fence — and lines 40, 41, 43,
+  47 and 49 of the file are `## Phase 2: Upload with retry`, `Status: In
+  progress`, the task list, `Retry loop sketch:` and the ```` ```csharp ````
+  fence. **PASS**
+- Memory, `stress-large.md`, gutter **on**, after ten pages of scrolling and a
+  collect: **87.8 MB** (< 100), realized blocks **18 of 2074**. Identical to the
+  gutter-off figure — the gutter allocates one `FormattedText` per visible number
+  per paint and nothing else. Three fixtures as tabs: 86.1 MB after gc, against
+  88.3 MB before this phase. **PASS**
+- One-time layout change, measured: the virtual viewer's H1 left edge moves from
+  **x 429 to x 459** on `sample-plan.md` at 1400x1000, the text column narrowing
+  to match. The classic viewer is unchanged at 429. This is the cost the user
+  accepted in exchange for a free toggle. **RECORDED**
+- Regression, **virtual renderer**: `test-virtual` ALL PASS (24), `test-reload`
+  ALL PASS (17), `test-tabs` ALL PASS (14), `test-html-comments` ALL PASS (9),
+  `test-toc-search` ALL PASS (14, 3 skipped) on `sample-plan.md` and ALL PASS
+  (17, 3 skipped) on `stress-large.md`. **PASS**
+- Regression, **classic renderer**: `test-tabs` ALL PASS (14),
+  `test-html-comments` ALL PASS (9), `test-toc-search` ALL PASS (13, 1 skipped)
+  and ALL PASS (14). The View menu item is present but logs
+  `line numbers: classic viewer has no gutter` — the classic path never gained
+  one. **PASS**
 
 ## Phase 5: Search over the model
 Status: Not started

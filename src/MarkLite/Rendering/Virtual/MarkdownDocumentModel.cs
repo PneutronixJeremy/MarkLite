@@ -38,9 +38,14 @@ internal sealed partial class MarkdownDocumentModel
     /// <param name="Start">Index of the block's first character in <see cref="Text"/>.</param>
     /// <param name="End">Index of the block's last character (inclusive).</param>
     /// <param name="Hash">FNV-1a hash of the source slice; identifies the block across reloads.</param>
-    internal readonly record struct BlockInfo(Block Block, int Start, int End, ulong Hash)
+    /// <param name="StartLine">1-based line the block starts on in the source file.</param>
+    /// <param name="EndLine">1-based line the block ends on, inclusive.</param>
+    internal readonly record struct BlockInfo(
+        Block Block, int Start, int End, ulong Hash, int StartLine, int EndLine)
     {
         public int Length => End - Start + 1;
+
+        public int LineCount => EndLine - StartLine + 1;
     }
 
     /// <summary>A heading, with the top-level block that has to be realized to show it.</summary>
@@ -169,11 +174,19 @@ internal sealed partial class MarkdownDocumentModel
         var slugs = new SlugGenerator();
         var builder = new StringBuilder();
 
+        /*  Line numbers come from the span rather than from Markdig's own
+            Block.Line, so they agree with the slice the rest of this class hands
+            out — and so the synthetic groups, whose Line is meaningless, get the
+            lines their definitions are actually on. */
+        var lineStarts = LineStarts(text);
+
         for (var index = 0; index < document.Count; index++)
         {
             var block = document[index];
             var (start, end) = Extent(text, block);
-            blocks.Add(new BlockInfo(block, start, end, HashOf(text, block, start, end)));
+            blocks.Add(new BlockInfo(
+                block, start, end, HashOf(text, block, start, end),
+                LineOf(lineStarts, start), LineOf(lineStarts, end)));
 
             CollectHeadings(block, index, slugs, builder, headings, flatHeadings, anchors);
             CollectAnchors(block, index, anchors);
@@ -335,6 +348,47 @@ internal sealed partial class MarkdownDocumentModel
             hash = Hash(text, childStart, childEnd, hash);
         }
         return hash;
+    }
+
+    /*  Offset of the first character of every line, so a source offset can be
+        turned into a line number by binary search. Built once per parse: the
+        gutter asks for a line number per realized block, and a per-block scan
+        of the text would make that quadratic in the document.
+
+        Both \r\n and a bare \n end a line, and a \r that is not followed by \n
+        does not — MarkLite reads files as text and Markdig treats them the same
+        way, so a lone \r is content. */
+    private static int[] LineStarts(string text)
+    {
+        var starts = new List<int>(Math.Max(16, text.Length / 40)) { 0 };
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] == '\n')
+            {
+                starts.Add(index + 1);
+            }
+        }
+        return [.. starts];
+    }
+
+    /// <summary>1-based line number containing a source offset.</summary>
+    private static int LineOf(int[] lineStarts, int offset)
+    {
+        var low = 0;
+        var high = lineStarts.Length - 1;
+        while (low < high)
+        {
+            var middle = (low + high + 1) / 2;
+            if (lineStarts[middle] <= offset)
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+        return low + 1;
     }
 
     /*  FNV-1a over the block's source slice. Used to recognise a block across a

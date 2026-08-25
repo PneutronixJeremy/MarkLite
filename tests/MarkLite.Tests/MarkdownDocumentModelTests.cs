@@ -308,6 +308,81 @@ public class MarkdownDocumentModelTests
         Assert.Contains(slugs, s => s.EndsWith("-1", StringComparison.Ordinal));
     }
 
+    /*  The gutter's whole job: say which line of the file a block came from, so
+        what is on screen can be found again in an editor. Lines are 1-based,
+        because that is what every editor and every grep result counts in. */
+    [Fact]
+    public void BlocksReportTheSourceLinesTheyCameFrom()
+    {
+        var model = Parse("# Title\n\nFirst.\n\nSecond\ncontinues here.\n");
+
+        Assert.Equal([1, 3, 5], model.Blocks.Select(b => b.StartLine));
+        Assert.Equal([1, 3, 6], model.Blocks.Select(b => b.EndLine));
+        //  A paragraph spanning two source lines is two lines long.
+        Assert.Equal([1, 1, 2], model.Blocks.Select(b => b.LineCount));
+    }
+
+    [Fact]
+    public void LineNumbersAreTheSameWithWindowsLineEndings()
+    {
+        var unix = Parse("# Title\n\nFirst.\n\nSecond.\n");
+        var windows = Parse("# Title\r\n\r\nFirst.\r\n\r\nSecond.\r\n");
+
+        Assert.Equal(
+            unix.Blocks.Select(b => (b.StartLine, b.EndLine)),
+            windows.Blocks.Select(b => (b.StartLine, b.EndLine)));
+    }
+
+    /*  A setext heading is its text plus an underline. The gutter labels the
+        block's top, and the reader looking for that heading in an editor wants
+        the line with the words on it. */
+    [Fact]
+    public void SetextHeadingReportsItsTextLineNotItsUnderline()
+    {
+        var model = Parse("Intro.\n\nTitle\n=====\n\nBody.\n");
+
+        var heading = model.Blocks[1];
+        Assert.IsType<Markdig.Syntax.HeadingBlock>(heading.Block);
+        Assert.Equal(3, heading.StartLine);
+    }
+
+    /*  Fenced code is the one block the gutter numbers line by line, so its
+        first line has to be the fence's own line — the renderer lays the code
+        out starting one line below it. */
+    [Fact]
+    public void FencedCodeBlockSpansItsFenceLines()
+    {
+        var model = Parse("Intro.\n\n```cs\nvar a = 1;\nvar b = 2;\n```\n\nAfter.\n");
+
+        var fence = model.Blocks[1];
+        Assert.IsType<Markdig.Syntax.FencedCodeBlock>(fence.Block);
+        Assert.Equal(3, fence.StartLine);
+        Assert.Equal(6, fence.EndLine);
+    }
+
+    [Fact]
+    public void StressFixtureLineNumbersSpanTheWholeFile()
+    {
+        var text = Fixture("stress-large.md");
+        var model = Parse(text);
+        var lineCount = text.Split('\n').Length;
+
+        Assert.Equal(1, model.Blocks[0].StartLine);
+        //  Every block in order, never running past the end of the file: the
+        //  gutter draws these numbers straight onto the screen.
+        var previous = 1;
+        foreach (var block in model.Blocks)
+        {
+            Assert.InRange(block.StartLine, previous, lineCount);
+            Assert.InRange(block.EndLine, block.StartLine, lineCount);
+            previous = block.StartLine;
+        }
+
+        //  Four digits is what the gutter has to fit for this document; the
+        //  reserved width is sized for exactly that.
+        Assert.InRange(model.Blocks[^1].EndLine, 1000, 9999);
+    }
+
     /*  Markdig hands its footnote group and its link-reference group a span
         covering the whole document. Believed, that makes the LAST block of the
         file change on every edit anywhere in it — and the reload alignment

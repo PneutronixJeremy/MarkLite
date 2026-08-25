@@ -56,6 +56,12 @@ internal sealed class VirtualBlockPanel : Panel
     private int _measuredCount;
     private double _lastWidth;
 
+    /*  The line-number strip. A permanent child: it is never recycled, and the
+        width it reserves is held on BOTH sides of the document whether the
+        numbers are showing or not — so the document stays centred, and turning
+        the numbers on re-wraps nothing and invalidates no cached height. */
+    private readonly GutterPanel _gutter;
+
     private ScrollViewer? _scroller;
     private double _pendingScrollCorrection;
     private double? _pendingScrollTarget;
@@ -76,6 +82,12 @@ internal sealed class VirtualBlockPanel : Panel
         document did not come from a reload — a tab switch loads into a viewer
         that was cleared, and there is nothing to align against. */
     private int[] _alignment = [];
+
+    public VirtualBlockPanel()
+    {
+        _gutter = new GutterPanel(this);
+        Children.Add(_gutter);
+    }
 
     /// <summary>Raised when a block gains controls, so a search can highlight it.</summary>
     public event Action<int, BlockContainer>? Realized;
@@ -99,6 +111,30 @@ internal sealed class VirtualBlockPanel : Panel
             {
                 _scroller.ScrollChanged += OnScrollChanged;
             }
+        }
+    }
+
+    /// <summary>The document, for callers that need its blocks' source lines.</summary>
+    public MarkdownDocumentModel? Model => _model;
+
+    /// <summary>Redraws the line-number strip — after the toggle changes, or after anything
+    /// that moves blocks without re-laying out the panel.</summary>
+    public void InvalidateGutter() => _gutter.InvalidateVisual();
+
+    /// <summary>1-based source lines of the first and last block intersecting the viewport, or
+    /// (0, 0) when there is no document.</summary>
+    public (int First, int Last) VisibleSourceLines
+    {
+        get
+        {
+            if (_model is null || _model.Blocks.Count == 0 || _scroller is null)
+            {
+                return (0, 0);
+            }
+            var top = BlockAtOffset(_scroller.Offset.Y);
+            var bottom = BlockAtOffset(_scroller.Offset.Y + _scroller.Viewport.Height);
+            return (_model.Blocks[Math.Max(0, top)].StartLine,
+                _model.Blocks[Math.Max(0, bottom)].EndLine);
         }
     }
 
@@ -406,7 +442,7 @@ internal sealed class VirtualBlockPanel : Panel
         var anchorIndex = FirstVisibleBlock;
         var anchorOffsetBefore = anchorIndex >= 0 ? BlockOffset(anchorIndex) : 0;
 
-        var childSize = new Size(width, double.PositiveInfinity);
+        var childSize = new Size(ContentWidth(width), double.PositiveInfinity);
         foreach (var (index, container) in _realized)
         {
             container.Measure(childSize);
@@ -414,6 +450,7 @@ internal sealed class VirtualBlockPanel : Panel
         }
 
         EnsureOffsets();
+        _gutter.Measure(new Size(GutterPanel.Reserve, TotalExtent));
 
         if (_stickyAnchorPasses > 0 && _stickyAnchorBlock >= 0 && _heights.Length > 0)
         {
@@ -455,10 +492,16 @@ internal sealed class VirtualBlockPanel : Panel
         }
 
         EnsureOffsets();
+        var contentWidth = ContentWidth(finalSize.Width);
         foreach (var (index, container) in _realized)
         {
-            container.Arrange(new Rect(0, _offsets[index], finalSize.Width, _heights[index]));
+            container.Arrange(new Rect(
+                GutterPanel.Reserve, _offsets[index], contentWidth, _heights[index]));
         }
+        //  As tall as the whole document, so a block's offset is the same number
+        //  in the gutter's coordinates as in the panel's.
+        _gutter.Arrange(new Rect(0, 0, GutterPanel.Reserve, TotalExtent));
+        _gutter.InvalidateVisual();
 
         SchedulePendingScroll();
 
@@ -599,12 +642,14 @@ internal sealed class VirtualBlockPanel : Panel
 
     private void RecycleAll()
     {
+        //  Removed one by one, not Children.Clear(): the gutter is a child too
+        //  and it outlives every document.
         foreach (var container in _realized.Values)
         {
             container.SizeChanged -= OnBlockSizeChanged;
+            Children.Remove(container);
         }
         _realized.Clear();
-        Children.Clear();
     }
 
     // ─────────────────────────────────────────────────────── heights
@@ -714,6 +759,13 @@ internal sealed class VirtualBlockPanel : Panel
         //  One past the end: the extent.
         _offsets[^1] = running;
     }
+
+    /*  The document's own width: the panel's width less the strip reserved on
+        each side. Never negative, and never so small that a block would be
+        measured at nothing — a very narrow window keeps the text readable and
+        lets the numbers overlap instead. */
+    private static double ContentWidth(double panelWidth) =>
+        Math.Max(120, panelWidth - (2 * GutterPanel.Reserve));
 
     /// <summary>Index of the block containing a content-space offset.</summary>
     private int BlockAtOffset(double y)

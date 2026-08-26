@@ -102,6 +102,15 @@ Ground rules:
   instance group, so this never reaches the user's own tabs, and it is the only
   script that passes `-KeepSession` — every other launch clears the key so a
   previous script's tabs cannot inflate its tab counts.
+- **`test-handoff-focus.ps1 -TakeFocus [-Exe path]`** — a file handoff raises
+  the window. **Not in `run-all`, and it refuses to run without `-TakeFocus`**:
+  it is the one check whose subject is the desktop focus, so it takes focus
+  from whatever you are doing. Nothing is injected — the window is minimized
+  with `ShowWindow`, the handoff is a real secondary launch, and the result is
+  read with `GetForegroundWindow`. Asserts the window comes forward *and* is
+  restored rather than left minimized, and then that a `--cmd` message on the
+  same pipe does neither, which is what keeps every other script in this
+  directory able to run while you work.
 - **`test-selection.ps1 [-Exe path] [-CaptureDir dir]`** — selection, copy and
   link clicks. Copy hands back the **markdown source** the selection covers, and the selection is
   addressed by block and character, so it can span parts of the document that

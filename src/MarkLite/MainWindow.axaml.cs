@@ -208,14 +208,13 @@ public partial class MainWindow : Window
         }
 
         /*  Only the primary instance holds the pipe; StartServer no-ops in a
-            standalone secondary. Activate() nudges the window forward when a
-            handoff arrives (Windows may only flash the taskbar button). */
+            standalone secondary. */
         SingleInstance.StartServer(
             path =>
             {
                 DebugLog.Write($"handoff received: {path}");
                 OpenFile(path);
-                Activate();
+                RaiseToForeground();
             },
             /*  Debug commands arrive on the same pipe (see DebugCommands.cs).
                 No Activate() here on purpose: scripted checks must not pull
@@ -388,6 +387,36 @@ public partial class MainWindow : Window
     }
 
     #endregion
+
+    /*  Brings the window to the user after a handoff. Three separate things
+        have to happen and only the first is Avalonia's:
+
+        - a minimized window has to be RESTORED, or it comes forward as a
+          taskbar button and the document is still out of sight;
+        - Activate() asks the platform to raise us;
+        - SetForegroundWindow is what actually moves the foreground, and it
+          only succeeds because the secondary launch handed its right over
+          before writing to the pipe (see SingleInstance.SendToPrimary).
+
+        Everything here is logged: a refused raise is invisible on screen
+        except as a flashing taskbar button, which is exactly the failure this
+        replaced. */
+    private void RaiseToForeground()
+    {
+        var wasMinimized = WindowState == WindowState.Minimized;
+        if (wasMinimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Activate();
+
+        var handle = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        var raised = handle != IntPtr.Zero && NativeMethods.SetForegroundWindow(handle);
+        DebugLog.Write(
+            $"handoff raise: {(wasMinimized ? "restored from minimized" : "already visible")}, "
+            + $"SetForegroundWindow {(raised ? "succeeded" : "refused")}");
+    }
 
     private void MarkActivity()
     {

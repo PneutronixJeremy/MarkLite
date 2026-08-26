@@ -64,6 +64,21 @@ internal static class SingleInstance
     /// <summary>Secondary side: hands a file path to the primary. True on success.</summary>
     internal static bool SendToPrimary(string fullPath)
     {
+        /*  This process was started by Explorer in response to the user's
+            double-click, so for this moment it owns the foreground and is the
+            only one that can give it away. Without this the primary's
+            Activate() flashes the taskbar button and the document opens in a
+            window the user still has to go and find.
+
+            ASFW_ANY rather than the primary's process id: the id is not in the
+            protocol, and the grant lapses at the next foreground change
+            anyway. Deliberately NOT done for the debug-command overload —
+            verification scripts run while the user is working and must never
+            pull focus. */
+        if (!NativeMethods.AllowSetForegroundWindow(NativeMethods.AsfwAny))
+        {
+            DebugLog.Write("handoff: foreground grant refused; the primary may only flash");
+        }
         return Send(fullPath);
     }
 

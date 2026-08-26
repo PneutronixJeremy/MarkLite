@@ -243,7 +243,7 @@ Results:
 - `build/publish.ps1` exit 0, no warnings; `tools/scrub-check.ps1` clean.
 
 ## Phase 3: A handoff raises the window
-Status: Not started
+Status: Complete
 
 `MainWindow` already calls `Activate()` when a handoff arrives, and it does not
 work. Windows refuses to let a process that does not currently own the
@@ -253,22 +253,22 @@ foreground away is the **secondary** launch — Explorer just started it in
 response to the user's double-click, so it holds the foreground privilege for a
 moment. It has to hand that privilege over before it exits.
 
-- [ ] In `SingleInstance.SendToPrimary`, call `AllowSetForegroundWindow` before
+- [x] In `SingleInstance.SendToPrimary`, call `AllowSetForegroundWindow` before
   writing the path to the pipe. `ASFW_ANY` (`-1`) avoids plumbing the primary's
   process id through the protocol; the grant lapses at the next foreground
   change, so the window it opens is momentary.
-- [ ] Only for a **file handoff**. The `--cmd` debug path goes through the same
+- [x] Only for a **file handoff**. The `--cmd` debug path goes through the same
   method and must never pull focus — verification scripts run while the user is
   working, and the existing handler already documents that. Either gate on the
   message type or grant only from the file-handoff caller.
-- [ ] In the handoff handler, keep `Activate()` and consider following it with
+- [x] In the handoff handler, keep `Activate()` and consider following it with
   an explicit `SetForegroundWindow` on the window handle: `Activate()` is
   Avalonia's abstraction and it is worth confirming on the published exe which
   one actually raises a minimized window as opposed to merely an occluded one.
-- [ ] A minimized primary must be **restored**, not just raised — check what
+- [x] A minimized primary must be **restored**, not just raised — check what
   `WindowState` it comes back in and restore it if the handoff finds it
   minimized.
-- [ ] `MARKLITE_DEBUG` log line on the handoff recording whether the raise was
+- [x] `MARKLITE_DEBUG` log line on the handoff recording whether the raise was
   attempted, so a failure is visible in the log rather than only on screen.
 
 ### Verification Plan
@@ -285,7 +285,39 @@ moment. It has to hand that privilege over before it exits.
   the user would.
 
 ### Phase Summary
-_(write when phase completes)_
+`NativeMethods.cs` (new) holds two `DllImport`s — `AllowSetForegroundWindow` and
+`SetForegroundWindow`. `SingleInstance.SendToPrimary(string)` grants `ASFW_ANY`
+before writing the path; the `DebugCommand` overload deliberately does not, so
+the `--cmd` channel still cannot pull focus. `MainWindow.RaiseToForeground`
+replaces the bare `Activate()` on the handoff: restore the window if it is
+minimized, `Activate()`, then `SetForegroundWindow` on the platform handle, with
+one log line naming both the restore and whether the raise succeeded.
+
+`DllImport` rather than the `LibraryImport` source generator: the generated
+stubs require `AllowUnsafeBlocks`, which is not worth enabling across the
+project for two calls that marshal a handle and a bool.
+
+Not isolated, and worth knowing: the grant is what makes this work, but whether
+`Activate()` alone would now suffice was never tested on its own — the shipped
+combination is grant + `Activate()` + `SetForegroundWindow`, and the log line
+reports what the last of those returned.
+
+Results:
+- New `tools/verify/test-handoff-focus.ps1`, **11 checks, ALL PASS**, run with
+  the user's explicit go on 2026-08-26. It is **not in `run-all.ps1`** and
+  refuses to run without `-TakeFocus`, printing a skip notice instead. Nothing
+  is injected: `ShowWindow` minimizes, the handoff is a real secondary launch,
+  `GetForegroundWindow` / `IsIconic` read the result.
+- The two halves it asserts: a handoff to a minimized primary brings the window
+  to the foreground *and* restores it (not merely un-minimizes the taskbar
+  button), the file lands as the active tab — and a `--cmd` message on the same
+  pipe does neither, which is what keeps every other script able to run while
+  the user works.
+- `run-all.ps1`: ALL PASS (8 scripts) — confirming the `--cmd` path did not
+  start stealing focus. `build/publish.ps1` exit 0, no warnings.
+- One bug in the check itself, fixed before the recorded run: `-match` over an
+  array answers with the matching elements, not a bool, which `Assert-True`
+  cannot read.
 
 ## Phase 4: Keep the reading position across a window resize
 Status: Not started

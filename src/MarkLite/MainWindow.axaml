@@ -92,6 +92,9 @@
                 <MenuItem Header="Make MarkLite the _default…" Click="OnMakeDefaultClicked" />
             </MenuItem>
             <MenuItem Header="_Help">
+                <!-- Header set from code; no mnemonic, it is not reachable by keyboard. -->
+                <MenuItem Name="VersionItem" Header="MarkLite" IsEnabled="False" />
+                <Separator />
                 <MenuItem Header="_Check for updates" Click="OnCheckForUpdatesClicked" />
             </MenuItem>
         </Menu>

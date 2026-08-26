@@ -1,9 +1,11 @@
 # Version line in Help + reopen last session + bring to front
 
-Three small features requested together (user, 2026-08-25), shipping as v1.2.0:
-a version line in the Help menu; Notepad-style session restore — the files that
+Small features requested together (user, 2026-08-25), shipping as v1.2.0: a
+version line in the Help menu; Notepad-style session restore — the files that
 were open when MarkLite closed come back when it launches, which matters most
 across an auto-update restart; and a handoff that actually raises the window.
+A fourth was added on 2026-08-26: a window resize must keep the reader on the
+same place in the document instead of on the same pixel offset.
 
 Decisions fixed with the user on 2026-08-25 (do not re-open):
 - **Version line is static**, not a clickable About dialog: a greyed
@@ -67,13 +69,13 @@ Code map (as of the start of this plan):
 - `tools/verify/` — scripted checks; `run-all.ps1` tabulates them.
 
 ## Phase 1: Version line in the Help menu
-Status: Not started
+Status: Complete
 
-- [ ] A `MarkLiteVersion` helper (new small static, or a member of an existing
+- [x] A `MarkLiteVersion` helper (new small static, or a member of an existing
   one) returning the display version as a plain string: the assembly's
   `AssemblyInformationalVersionAttribute` truncated at the first `+`, so
   `1.1.0+78f542c…` reads `1.1.0`.
-- [ ] Help menu gains a **disabled** first item bound to it, then a separator,
+- [x] Help menu gains a **disabled** first item bound to it, then a separator,
   then the existing "Check for updates":
 
   ```xml
@@ -86,16 +88,16 @@ Status: Not started
 
   Header set from code in the constructor. No mnemonic on the version item — it
   is not reachable by keyboard and a mnemonic would imply it is.
-- [ ] **Do not use `UpdateService.CurrentVersion` for this.** It comes from
+- [x] **Do not use `UpdateService.CurrentVersion` for this.** It comes from
   Velopack's `UpdateManager` and returns `"0.0.0-dev"` for any copy that is not
   installed, so the portable zip and every dev run would show a fake version.
   The assembly attribute is correct in installed, portable and dev builds alike.
-- [ ] Confirm the attribute survives **AOT + trimming**. Assembly-level custom
+- [x] Confirm the attribute survives **AOT + trimming**. Assembly-level custom
   attributes are normally preserved, but this must be checked on the published
   exe, not asserted. If it comes back null, fall back to
   `Assembly.GetName().Version` rendered as three parts (`1.1.0`), and record
   which one shipped.
-- [ ] `MARKLITE_DEBUG` log line on startup naming the version, so a script can
+- [x] `MARKLITE_DEBUG` log line on startup naming the version, so a script can
   assert on it without reading a menu.
 
 ### Verification Plan
@@ -109,7 +111,31 @@ Status: Not started
 - Menu item reports `IsEnabled = false` through UIA.
 
 ### Phase Summary
-_(write when phase completes)_
+`AppVersion.Display` (new `src/MarkLite/AppVersion.cs`) reads the assembly's
+`AssemblyInformationalVersionAttribute` and cuts it at the first `+`, with a
+`GetName().Version` fallback that logs a line when it is used. The Help menu's
+first item is disabled and its header is set from the constructor
+(`MarkLite {version}`); `Program.Main` logs `version <x.y.z>` right after the
+Velopack hook, so every launch — including `--cmd` sends — states it.
+
+Verification found that a submenu item is **not in the UI Automation tree
+until the menu is opened**, so the planned UIA cross-check would have needed a
+popup and the focus that comes with it. Instead `dump-state` gained a
+`"version"` field that reports the *menu item's own header text*, which is the
+same assertion without touching the UI.
+
+Results, all on the published AOT exe:
+- `build/publish.ps1` exit 0, no warnings; `dotnet test` 62/62 green.
+- Startup log `version 1.1.0` == `<Version>` in `MarkLite.csproj`; `dump-state`
+  `"version":"MarkLite 1.1.0"`.
+- The "informational attribute missing" fallback line never appears, so the
+  attribute **survives AOT + trimming** and the fallback did not ship.
+- A copy of the publish output run from outside any install (the portable
+  layout) reports the same `1.1.0` while logging "not an installed copy" —
+  the case `UpdateService.CurrentVersion` would have called `0.0.0-dev`.
+- `IsEnabled="False"` is markup, not runtime state; reading it back through UIA
+  needs the Help popup open, which is a focus-stealing action and was not run.
+- `run-all.ps1`: ALL PASS (7 scripts).
 
 ## Phase 2: Reopen last session
 Status: Not started
@@ -219,7 +245,49 @@ moment. It has to hand that privilege over before it exits.
 ### Phase Summary
 _(write when phase completes)_
 
-## Phase 4: Release v1.2.0
+## Phase 4: Keep the reading position across a window resize
+Status: Not started
+
+Requested by the user 2026-08-26, while Phase 1 was being verified. Resizing
+the window keeps the **absolute** scroll offset, but a width change re-wraps
+every block and re-measures the realized ones, so the offset no longer points
+at the same text — the reader is dropped somewhere else in the document, and
+the taller the document the further off it lands.
+
+- [ ] Capture the anchor **before** the layout pass a size change triggers:
+  `VirtualBlockPanel.FirstVisibleBlock` plus the offset within that block, the
+  same pair `DocumentTab.CaptureScroll` already records and `dump-state`
+  reports as `firstVisibleBlock` / `anchorWithin`.
+- [ ] Restore it **after** the pass, once the new widths have been measured:
+  scroll to `BlockOffset(block) + within`. The within-block offset is only
+  meaningful up to the re-wrap; clamp it to the block's new height rather than
+  letting it spill into the next block.
+- [ ] Width changes only. A height-only resize does not re-wrap anything, and
+  re-anchoring it would move the document under a reader who only made the
+  window taller.
+- [ ] The active tab is the one being resized, but every tab's viewer is laid
+  out at the same width. Decide whether background tabs re-anchor on their next
+  activation (their `SavedScroll` already exists) rather than doing work for
+  windows nobody is looking at.
+- [ ] Watch the interaction with the anchored reload path — both write the
+  scroll offset, and a resize during a reload must not fight it.
+
+### Verification Plan
+- New `tools/verify/test-resize.ps1`, added to `run-all.ps1`. `SetWindowPos`
+  with `SWP_NOACTIVATE` (already in `common.ps1`) changes the size without
+  injecting input or taking focus.
+- Open `stress-large.md`, scroll to the middle, record `firstVisibleBlock`,
+  halve the window width, and assert the same block is still at the viewport
+  top; then restore the width and assert it again.
+- Repeat with a height-only change and assert the offset is untouched.
+- A resize while the find bar is open and a match is highlighted keeps the
+  match on screen.
+- `run-all.ps1` still ALL PASS.
+
+### Phase Summary
+_(write when phase completes)_
+
+## Phase 5: Release v1.2.0
 Status: Not started
 
 - [ ] README: Features bullet for session restore (the Help version line and

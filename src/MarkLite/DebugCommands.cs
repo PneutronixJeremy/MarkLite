@@ -418,7 +418,13 @@ public partial class MainWindow
                 .Append(",\"targetBlock\":-1,\"targetBlockOffset\":0,\"targetBlockLine\":0");
         }
 
-        builder.Append(",\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))
+        /*  The version as the HELP MENU shows it, not as AppVersion computes
+            it: a check reading this is asserting on the text the user sees,
+            and submenu items are not in the UI Automation tree until the menu
+            is opened. */
+        builder.Append(",\"version\":")
+            .Append(JsonString(this.FindControl<MenuItem>("VersionItem")?.Header as string ?? string.Empty))
+            .Append(",\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))
             .Append(",\"tocCount\":").Append(_activeTab?.TocEntries.Count ?? 0)
             .Append(",\"tocIndex\":").Append(_currentTocIndex)
             .Append(",\"gutterVisible\":").Append(Rendering.Virtual.GutterPanel.Enabled ? "true" : "false")

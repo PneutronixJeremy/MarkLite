@@ -210,6 +210,7 @@ public partial class MainWindow : Window
             ExecuteDebugCommand);
 
         this.FindControl<MenuItem>("RegisterOpenWithItem")!.IsChecked = FileAssociation.IsRegistered;
+        this.FindControl<MenuItem>("VersionItem")!.Header = $"MarkLite {AppVersion.Display}";
 
         Opened += (_, _) =>
         {

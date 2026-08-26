@@ -34,6 +34,8 @@ internal static class Program
             .OnBeforeUninstallFastCallback(_ => FileAssociation.UninstallCleanup())
             .Run();
 
+        DebugLog.Write($"version {AppVersion.Display}");
+
         /*  Single-instance: with a file argument, hand it to a running primary
             instance and exit instead of opening a second window. A primary
             that cannot be reached (or a no-argument launch when one exists)

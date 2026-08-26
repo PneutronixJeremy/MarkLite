@@ -27,14 +27,20 @@ From a clean `main` with all checks green:
 
 1. Bump `<Version>` in `src/MarkLite/MarkLite.csproj` — the single source of
    truth for the installer, the nupkg and the update feed.
-2. Commit (`Distribution > vX.Y.Z: …`) and `git push`.
-3. `.\build\pack.ps1` — AOT publish + `vpk pack` into `releases/`. **Keep the
+2. Write the release notes as `docs/release-notes/vX.Y.Z.md` — markdown, and
+   what lands in the GitHub release body verbatim.
+3. Commit (`Distribution > vX.Y.Z: …`) and `git push`.
+4. `.\build\pack.ps1` — AOT publish + `vpk pack` into `releases/`. **Keep the
    previous release's files in `releases/`** so vpk can build a delta package
    against them.
-4. `.\build\release.ps1` — uploads `Setup.exe`, the full and delta nupkg, the
-   portable zip and the `RELEASES` manifest, and creates the `vX.Y.Z` tag. Add
-   `-Draft` for a release you want to review before it goes live.
-5. Installed copies self-update: a background check runs ~3 s after launch (or
+5. `.\build\release.ps1` — uploads `Setup.exe`, the full and delta nupkg, the
+   portable zip and the `RELEASES` manifest, creates the `vX.Y.Z` tag, and
+   writes the release body from the notes file. Add `-Draft` for a release you
+   want to review before it goes live. `vpk` has no notes option of its own, so
+   the body is PATCHed over the GitHub API with the same token afterwards;
+   `-NotesFile` points somewhere else, `-NoNotes` ships an empty body, and a
+   missing notes file stops the run **before** anything is uploaded.
+6. Installed copies self-update: a background check runs ~3 s after launch (or
    on demand via Help > Check for updates), the package downloads silently, and
    it applies on the next restart — "Restart to update" banner or apply-on-exit.
 

@@ -294,16 +294,18 @@ Status: Not started
   the window raise are not worth bullets of their own).
 - [ ] `<Version>1.2.0</Version>` in `src/MarkLite/MarkLite.csproj`.
 - [ ] **Commit and push the version bump BEFORE packing.** `docs/RELEASING.md`
-  step 2 says so and the v1.1.0 release did not: the shipped binary recorded the
+  says so and the v1.1.0 release did not: the shipped binary recorded the
   previous commit as its source revision while the tag pointed at the bump. No
-  functional consequence that time, but the provenance was wrong.
+  functional consequence that time, but the provenance was wrong. v1.1.1 did it
+  in order and its exe's `ProductVersion` hash matches the tagged commit.
 - [ ] `build/pack.ps1` with the previous release's files present in `releases/`
-  so a delta against 1.1.0 is produced; verify Setup.exe, full and delta nupkg
+  so a delta against 1.1.1 is produced; verify Setup.exe, full and delta nupkg
   and portable zip exist and the delta is a fraction of the full.
 - [ ] Portable zip smoke run: `run-all.ps1 -Exe <unzipped>/current/MarkLite.exe`
   → all PASS.
-- [ ] Release notes draft for the GitHub release body (`release.ps1` does not
-  set one).
+- [ ] Release notes as `docs/release-notes/v1.2.0.md`; `build/release.ps1`
+  writes the GitHub release body from that file and refuses to upload without
+  it (added for v1.1.1).
 - [ ] Hand-off: the user runs `git push` and `build/release.ps1`. The agent
   never pushes, tags or uploads.
 
@@ -315,7 +317,7 @@ Status: Not started
 - The packed exe's `ProductVersion` git hash matches the commit the `v1.2.0` tag
   will point at.
 - `tools/scrub-check.ps1` exit 0 on the final tree.
-- Post-release (user-run, recorded here from their log): an installed v1.1.0
+- Post-release (user-run, recorded here from their log): an installed v1.1.1
   copy with `MARKLITE_DEBUG=1` finds 1.2.0, applies the delta, and comes back
   **with its tabs restored** — the feature's real acceptance test.
 

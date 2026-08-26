@@ -56,6 +56,15 @@
 
 - The release procedure and machine prerequisites live in
   [docs/RELEASING.md](docs/RELEASING.md).
+- **Order matters: bump `<Version>`, commit and push it, and only then run
+  `build/pack.ps1`.** The published exe records the HEAD commit as its source
+  revision, so packing before the bump is committed ships a binary whose
+  `ProductVersion` hash points at the previous commit while the release tag
+  points at the bump. v1.1.0 went out that way — harmless that time, but the
+  provenance was wrong and it is invisible unless you look.
+- Never re-run `pack.ps1` after the release artifacts have been verified: the
+  packed files are the ones the checks passed against, and a repack changes
+  every hash in `RELEASES`.
 
 ## Committing
 

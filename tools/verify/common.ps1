@@ -197,9 +197,13 @@ function Start-MarkLite {
         }
     }
 
+    <#  The path is quoted explicitly: Start-Process joins -ArgumentList into
+        one command line without quoting its elements, so a folder with a space
+        in its name arrives as two arguments and the app opens the truncated
+        first one. #>
     $arguments = @()
     if ($File) {
-        $arguments += (Resolve-Path -LiteralPath $File).Path
+        $arguments += '"{0}"' -f (Resolve-Path -LiteralPath $File).Path
     }
     $script:App = Start-Process -FilePath $script:Exe -ArgumentList $arguments -PassThru `
         -RedirectStandardError $script:LogPath
@@ -232,7 +236,8 @@ function Open-InMarkLite {
 
     $full = (Resolve-Path -LiteralPath $File).Path
     $before = Get-LogCount
-    $process = Start-Process -FilePath $script:Exe -ArgumentList @($full) -PassThru -Wait -WindowStyle Hidden
+    #  Quoted for the same reason as the primary launch above.
+    $process = Start-Process -FilePath $script:Exe -ArgumentList @('"{0}"' -f $full) -PassThru -Wait -WindowStyle Hidden
     if ($process.ExitCode -ne 0) {
         throw "Secondary launch exited with $($process.ExitCode)"
     }

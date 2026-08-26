@@ -405,25 +405,25 @@ Results:
   exit 0, no warnings. `tools/scrub-check.ps1` clean.
 
 ## Phase 5: Release v1.2.0
-Status: In progress
+Status: Complete
 
 - [x] README: Features bullet for session restore (the Help version line and
   the window raise are not worth bullets of their own).
 - [x] `<Version>1.2.0</Version>` in `src/MarkLite/MarkLite.csproj`.
-- [ ] **Commit and push the version bump BEFORE packing.** `docs/RELEASING.md`
+- [x] **Commit and push the version bump BEFORE packing.** `docs/RELEASING.md`
   says so and the v1.1.0 release did not: the shipped binary recorded the
   previous commit as its source revision while the tag pointed at the bump. No
   functional consequence that time, but the provenance was wrong. v1.1.1 did it
   in order and its exe's `ProductVersion` hash matches the tagged commit.
-- [ ] `build/pack.ps1` with the previous release's files present in `releases/`
+- [x] `build/pack.ps1` with the previous release's files present in `releases/`
   so a delta against 1.1.1 is produced; verify Setup.exe, full and delta nupkg
   and portable zip exist and the delta is a fraction of the full.
-- [ ] Portable zip smoke run: `run-all.ps1 -Exe <unzipped>/current/MarkLite.exe`
+- [x] Portable zip smoke run: `run-all.ps1 -Exe <unzipped>/current/MarkLite.exe`
   → all PASS.
 - [x] Release notes as `docs/release-notes/v1.2.0.md`; `build/release.ps1`
   writes the GitHub release body from that file and refuses to upload without
   it (added for v1.1.1).
-- [ ] Hand-off: the user runs `git push` and `build/release.ps1`. The agent
+- [x] Hand-off: the user runs `git push` and `build/release.ps1`. The agent
   never pushes, tags or uploads.
 
 ### Verification Plan
@@ -439,10 +439,82 @@ Status: In progress
   **with its tabs restored** — the feature's real acceptance test.
 
 ### Phase Summary
-_(write when phase completes)_
+Released 2026-08-26. `<Version>` 1.2.0, README gained the session-restore bullet
+and a line about the window raise, notes in `docs/release-notes/v1.2.0.md` —
+which `build/release.ps1` now reads by itself (added during the v1.1.1 patch).
+The notes were rewritten short and end-user facing on the user's instruction:
+what changed for them, not how.
+
+Order was kept this time, unlike v1.1.0: bump committed, pushed, *then* packed.
+The exe records `1.2.0+fc8abdb…`, the `v1.2.0` tag points at `fc8abdb`, and they
+match.
+
+Results:
+- `pack.ps1` exit 0. `releases/` holds `MarkLite-1.2.0-full.nupkg` (24.26 MB),
+  `MarkLite-1.2.0-delta.nupkg` (7.80 MB — **32 %** of full, against the 40 %
+  bar), `MarkLite-win-Setup.exe`, the portable zip and `RELEASES`.
+- `run-all.ps1` against the **packed portable exe**: ALL PASS (9 scripts).
+- The GitHub release is published with all six assets and the notes as its body.
+- Post-release acceptance (user-run): an installed copy taking the delta and
+  coming back with its tabs restored — the feature's real test — is still to be
+  done. It is the first update where session restore is on both sides.
 
 ## Final Recap
-_(write when all phases complete: summary of the entire piece of work)_
+Four features and one crash fix, shipped as v1.1.1 (the crash, out of band) and
+v1.2.0.
+
+- **Version line in the Help menu.** `AppVersion` reads the assembly's
+  informational version, cut at the `+`. Not Velopack's `CurrentVersion`, which
+  reads `0.0.0-dev` for any copy that is not installed. The attribute survives
+  AOT and trimming, confirmed on the published exe rather than assumed.
+- **Reopen last session**, default on, one registry entry per tab carrying a
+  block anchor. Saved on every change rather than at close, because an update
+  restart never reaches `Window.Closed` — and that restart is what the feature
+  is for.
+- **A handoff raises the window.** The secondary launch grants its foreground
+  right away before writing to the pipe; the primary restores itself if
+  minimized and claims it. The `--cmd` channel deliberately does neither.
+- **A resize keeps the reader in place.** A single width change was already
+  anchored; a drag is dozens of them, and the error compounded. The hold now
+  spans the whole drag, the correction is applied before the frame is painted,
+  and the offset inside the block is scaled by how much the block grew.
+- **Out of band: a crash on `xml`/`sql` code fences** (v1.1.1). ColorCode ships
+  two malformed colour literals in its own dictionaries; `Color.Parse` threw
+  mid-render and took the process down. Found by running the published exe
+  against the very plan file that was crashing the user's copy.
+
+Three recurring lessons, all of them costing a rewrite before they were learned:
+1. **Nothing about scroll position can be set before the window is laid out** —
+   it is clamped to zero and stays there.
+2. **`DispatcherPriority` is not a detail.** Background work is starved by
+   layout and by the pipe; `Loaded` runs after the frame is painted. Both were
+   visible as bugs (a position that never restored, a resize that jittered).
+3. **A capture taken at teardown lies.** The close-time scroll read returns
+   block 0 often enough to overwrite a good anchor.
+
+Verification grew from 7 scripts to 10: `test-session.ps1` (20 checks),
+`test-resize.ps1` (12) and `test-handoff-focus.ps1` (11, outside `run-all` and
+gated behind `-TakeFocus`, because its subject is the desktop focus).
+`run-all.ps1`: ALL PASS, 9 scripts, against both the publish output and the
+packed portable exe. Unit tests 62/62.
 
 ## Deployment Plan
-_(write when all phases complete: step-by-step deployment instructions)_
+Done on 2026-08-26; recorded here as the sequence that worked.
+
+1. `<Version>1.2.0</Version>` in `src/MarkLite/MarkLite.csproj`.
+2. Release notes as `docs/release-notes/v1.2.0.md` — end-user facing, four
+   bullets. `build/release.ps1` refuses to upload without this file.
+3. Commit, then **`git push`** — and nothing else pushed until step 5 is done:
+   `vpk` tags whatever `origin/main` points at when it runs, so a push in
+   between moves the tag off the commit the binary records.
+4. `build/pack.ps1` with the previous release's files still in `releases/`, so a
+   delta is produced. Verify the five artifacts, the delta ratio, and that the
+   exe's `ProductVersion` hash is HEAD.
+5. `run-all.ps1 -Exe <unzipped portable>/current/MarkLite.exe` → ALL PASS.
+6. The user runs `build/release.ps1` (`-Draft` first if the body wants a look).
+   The agent never pushes, tags or uploads.
+7. Then, and only then, push anything else.
+
+Still outstanding: the post-release check. Run an installed 1.1.1 copy with
+`MARKLITE_DEBUG=1`, let it take the delta, and confirm it comes back **with its
+tabs restored**.

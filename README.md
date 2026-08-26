@@ -77,8 +77,14 @@ one. Zero `msedgewebview2.exe` children, ever.
   wraparound, match counter, survives live reload.
 - Live reload: edits from any editor appear ~150 ms after save, scroll position
   preserved; deleted/locked files show a stale banner and recover automatically.
+- **Reopen last session** (Options menu, on by default): the documents that were
+  open come back on the next launch, each on the paragraph you were reading —
+  including across an auto-update restart. Files that have since been deleted are
+  dropped silently, and a file passed on the command line opens on top of the
+  session as the active tab.
 - Open via CLI argument, File > Open, drag-drop, or relative links between
-  Markdown files.
+  Markdown files. Opening a second file while MarkLite is running raises the
+  window it lands in, restoring it if it was minimized.
 - Text selection, with **Ctrl+C giving back the Markdown source** the selection
   covers rather than the rendered text — Ctrl+A copies the file. Selections are
   addressed by block and character, so they can span parts of the document that

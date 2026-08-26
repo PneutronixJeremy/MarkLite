@@ -405,11 +405,11 @@ Results:
   exit 0, no warnings. `tools/scrub-check.ps1` clean.
 
 ## Phase 5: Release v1.2.0
-Status: Not started
+Status: In progress
 
-- [ ] README: Features bullet for session restore (the Help version line and
+- [x] README: Features bullet for session restore (the Help version line and
   the window raise are not worth bullets of their own).
-- [ ] `<Version>1.2.0</Version>` in `src/MarkLite/MarkLite.csproj`.
+- [x] `<Version>1.2.0</Version>` in `src/MarkLite/MarkLite.csproj`.
 - [ ] **Commit and push the version bump BEFORE packing.** `docs/RELEASING.md`
   says so and the v1.1.0 release did not: the shipped binary recorded the
   previous commit as its source revision while the tag pointed at the bump. No
@@ -420,7 +420,7 @@ Status: Not started
   and portable zip exist and the delta is a fraction of the full.
 - [ ] Portable zip smoke run: `run-all.ps1 -Exe <unzipped>/current/MarkLite.exe`
   → all PASS.
-- [ ] Release notes as `docs/release-notes/v1.2.0.md`; `build/release.ps1`
+- [x] Release notes as `docs/release-notes/v1.2.0.md`; `build/release.ps1`
   writes the GitHub release body from that file and refuses to upload without
   it (added for v1.1.1).
 - [ ] Hand-off: the user runs `git push` and `build/release.ps1`. The agent

@@ -74,3 +74,8 @@
   prefix — breadcrumbs start at the area (e.g. `Distribution > 11: …`,
   `Docs > …`), still in the user's `Area > Subarea > Description. [w/ Claude]`
   format (user decision 2026-08-24).
+- **No plan phase numbers in commit subjects** (`Phase 3: …`, `Docs > 2: …`).
+  The plan file is deleted when the work lands, so the number stops meaning
+  anything, and while the plan does exist it already records which phase the
+  change was — the subject would say it twice. Name what changed instead:
+  `UI > Version in Help menu.` (user decision 2026-08-26).

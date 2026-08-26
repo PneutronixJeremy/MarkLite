@@ -324,6 +324,17 @@ internal sealed class VirtualMarkdownView : MarkdownViewer
             return;
         }
 
+        /*  The scrollbar is INSIDE this view, so a press on its thumb, track or
+            arrows tunnels through here first. Claiming it would start a text
+            drag and capture the pointer, leaving the thumb unable to move — the
+            scrollbar looks dead to the mouse while the wheel still works. The
+            selection is deliberately NOT cleared: dragging the scrollbar to see
+            the far end of a selection must not destroy it. */
+        if (e.Source is Visual scrollPart && scrollPart.FindAncestorOfType<ScrollBar>() is not null)
+        {
+            return;
+        }
+
         /*  A code block keeps its own selection: the renderer puts a
             SelectableTextBlock inside it, which handles dragging, Ctrl+C and the
             context menu for its own text. Starting a document drag there would

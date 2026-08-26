@@ -102,6 +102,18 @@ Ground rules:
   instance group, so this never reaches the user's own tabs, and it is the only
   script that passes `-KeepSession` — every other launch clears the key so a
   previous script's tabs cannot inflate its tab counts.
+- **`test-resize.ps1 [-Exe path] [-File doc.md] [-SecondFile doc.md]`** — a
+  window resize keeps the reader in the same place in the document. A different
+  width re-wraps every paragraph, so every height and every offset changes; the
+  panel holds the reader on the block they were on and on the same proportion of
+  it (`anchorBlockHeight` in `dump-state` is what makes the second half
+  assertable — the pixel offset into a paragraph means nothing once it wraps
+  differently). Covers a narrower window, a wider one, the return trip, a
+  **stepped drag** of a dozen small width changes (a real mouse drag, where the
+  error used to compound step by step), a height-only change (which re-wraps
+  nothing and must move nothing), and a tab resized while it was inactive.
+  Resizing is `SetWindowPos` with `SWP_NOACTIVATE`: geometry, not input, and no
+  focus is taken.
 - **`test-handoff-focus.ps1 -TakeFocus [-Exe path]`** — a file handoff raises
   the window. **Not in `run-all`, and it refuses to run without `-TakeFocus`**:
   it is the one check whose subject is the desktop focus, so it takes focus

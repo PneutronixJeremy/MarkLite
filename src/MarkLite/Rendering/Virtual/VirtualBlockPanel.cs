@@ -78,6 +78,7 @@ internal sealed class VirtualBlockPanel : Panel
         the reader was on is held until its offset stops moving. */
     private int _stickyAnchorBlock = -1;
     private double _stickyAnchorWithin;
+    private double _stickyAnchorHeight;
     private double _stickyAnchorLastOffset;
     private int _stickyAnchorPasses;
 
@@ -439,6 +440,20 @@ internal sealed class VirtualBlockPanel : Panel
     {
         _stickyAnchorBlock = block;
         _stickyAnchorWithin = within;
+        /*  The block's height as it was when the reader's position inside it
+            was measured. At a new width the same paragraph is a different
+            height, so "42 pixels in" points at different text — the offset is
+            scaled by how much the block grew (see MeasureOverride). */
+        _stickyAnchorHeight = block >= 0 && block < _heights.Length ? _heights[block] : 0;
+        _stickyAnchorLastOffset = double.NaN;
+        _stickyAnchorPasses = 40;
+    }
+
+    /*  Keeps the current hold alive across another burst of layout — a further
+        step of the same resize drag. The pass budget is refilled and the
+        settle detector reset, but the block being held is untouched. */
+    private void ExtendAnchorHold()
+    {
         _stickyAnchorLastOffset = double.NaN;
         _stickyAnchorPasses = 40;
     }
@@ -463,8 +478,25 @@ internal sealed class VirtualBlockPanel : Panel
         var widthChanged = Math.Abs(width - _lastWidth) > 0.5;
         if (widthChanged && _lastWidth > 0)
         {
-            var (block, within) = ScrollAnchor;
-            HoldAnchor(block, within);
+            /*  Dragging a window edge is not one width change, it is dozens.
+                Each one arrives before the previous hold has put the reader
+                back — the correction is applied from outside the layout pass
+                (see SchedulePendingScroll) — so re-reading ScrollAnchor here
+                would capture an offset that is still on its way and hold THAT
+                instead. The drift compounds step by step, and a drag ends
+                pages away from where it started.
+
+                So: capture only when no hold is in flight, and otherwise keep
+                the block the drag began on and just give it more passes. */
+            if (_stickyAnchorBlock >= 0)
+            {
+                ExtendAnchorHold();
+            }
+            else
+            {
+                var (block, within) = ScrollAnchor;
+                HoldAnchor(block, within);
+            }
         }
         if (widthChanged)
         {
@@ -502,18 +534,32 @@ internal sealed class VirtualBlockPanel : Panel
 
         if (_stickyAnchorPasses > 0 && _stickyAnchorBlock >= 0 && _heights.Length > 0)
         {
-            /*  Hold the reader on the block they were on. The offset WITHIN it
-                is kept only as far as its new height allows — at a different
-                width it is a different block. */
+            /*  Hold the reader on the block they were on, and on the same
+                PROPORTION of it: a paragraph that wraps to twice the height at
+                the new width has its text twice as far down, so carrying the
+                pixel offset over unchanged lands the reader a couple of lines
+                above where they were. Scaled when the old height is known,
+                clamped to the new height either way. */
             var index = Math.Clamp(_stickyAnchorBlock, 0, _heights.Length - 1);
-            var within = Math.Clamp(_stickyAnchorWithin, 0, Math.Max(0, _heights[index]));
+            var within = _stickyAnchorHeight > 0
+                ? _stickyAnchorWithin * (_heights[index] / _stickyAnchorHeight)
+                : _stickyAnchorWithin;
+            within = Math.Clamp(within, 0, Math.Max(0, _heights[index]));
             var target = Math.Max(0, _offsets[index] + within);
 
             _stickyAnchorPasses--;
+            /*  Released only when the offsets above the viewport have stopped
+                moving AND the reader is actually back at the anchor. Waiting
+                for the second condition matters during a resize DRAG: the
+                correction is applied from outside the layout pass, so between
+                two drag steps the target can be stable while the scroller has
+                not been moved to it yet. Releasing on the target alone lets the
+                next step capture that un-corrected offset as the new anchor,
+                and the error compounds over the drag. */
             if (!double.IsNaN(_stickyAnchorLastOffset)
-                && Math.Abs(target - _stickyAnchorLastOffset) < 1)
+                && Math.Abs(target - _stickyAnchorLastOffset) < 1
+                && Math.Abs((_scroller?.Offset.Y ?? target) - target) < 1)
             {
-                //  Settled: the offsets above the viewport have stopped moving.
                 _stickyAnchorPasses = 0;
                 _stickyAnchorBlock = -1;
             }
@@ -579,27 +625,51 @@ internal sealed class VirtualBlockPanel : Panel
         }
 
         _scrollUpdateQueued = true;
-        Dispatcher.UIThread.Post(() =>
+        /*  Render, not Loaded: this write moves what the reader is looking
+            at, and Loaded runs after the frame has already been painted
+            at the uncorrected offset — so the text is drawn in the wrong place
+            and snapped back one frame later. Once per layout pass that reads as
+            jitter, and a resize drag is dozens of passes.
+
+            The ScrollViewer can still clamp the write against an extent it has
+            not finished growing, which is why Loaded was chosen originally, so a
+            write that does not take is retried there. */
+        Dispatcher.UIThread.Post(() => ApplyPendingScroll(retry: true), DispatcherPriority.Render);
+    }
+
+    private void ApplyPendingScroll(bool retry)
+    {
+        _scrollUpdateQueued = false;
+        if (_scroller is null)
         {
-            _scrollUpdateQueued = false;
-            if (_scroller is null)
-            {
-                return;
-            }
+            return;
+        }
 
-            var target = _pendingScrollTarget
-                ?? (_pendingScrollCorrection != 0
-                    ? _scroller.Offset.Y + _pendingScrollCorrection
-                    : (double?)null);
-            _pendingScrollTarget = null;
-            _pendingScrollCorrection = 0;
+        var target = _pendingScrollTarget
+            ?? (_pendingScrollCorrection != 0
+                ? _scroller.Offset.Y + _pendingScrollCorrection
+                : (double?)null);
+        _pendingScrollTarget = null;
+        _pendingScrollCorrection = 0;
 
-            if (target is { } value && Math.Abs(value - _scroller.Offset.Y) > 0.5)
-            {
-                _scroller.Offset = _scroller.Offset.WithY(Math.Max(0, value));
-                UpdateRealization();
-            }
-        }, DispatcherPriority.Loaded);
+        if (target is not { } value)
+        {
+            return;
+        }
+
+        if (Math.Abs(value - _scroller.Offset.Y) > 0.5)
+        {
+            _scroller.Offset = _scroller.Offset.WithY(Math.Max(0, value));
+            UpdateRealization();
+        }
+
+        if (retry && Math.Abs(value - _scroller.Offset.Y) > 0.5)
+        {
+            //  Clamped against an extent still growing: try once more, later.
+            _pendingScrollTarget = value;
+            _scrollUpdateQueued = true;
+            Dispatcher.UIThread.Post(() => ApplyPendingScroll(retry: false), DispatcherPriority.Loaded);
+        }
     }
 
     // ──────────────────────────────────────────────────── realization

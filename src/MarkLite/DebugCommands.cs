@@ -399,6 +399,12 @@ public partial class MainWindow
                 .Append(",\"lastRealized\":").Append(lastRealized)
                 .Append(",\"firstVisibleBlock\":").Append(panel.FirstVisibleBlock)
                 .Append(",\"anchorWithin\":").Append(Number(anchorWithin))
+                /*  The anchor block's height, so a check can compare WHERE IN
+                    the block the reader is as a fraction. The pixel offset
+                    itself is meaningless across a width change: the same
+                    paragraph is a different height once it wraps differently. */
+                .Append(",\"anchorBlockHeight\":").Append(Number(
+                    panel.FirstVisibleBlock >= 0 ? panel.BlockHeight(panel.FirstVisibleBlock) : 0))
                 /*  What the gutter is showing: a check can compare these
                     against a grep of the fixture without reading pixels. */
                 .Append(",\"firstVisibleLine\":").Append(firstLine)
@@ -422,7 +428,7 @@ public partial class MainWindow
         {
             builder.Append(",\"blocks\":0,\"realizedBlocks\":0")
                 .Append(",\"measuredBlocks\":0,\"firstRealized\":-1,\"lastRealized\":-1")
-                .Append(",\"firstVisibleBlock\":-1,\"anchorWithin\":0")
+                .Append(",\"firstVisibleBlock\":-1,\"anchorWithin\":0,\"anchorBlockHeight\":0")
                 .Append(",\"firstVisibleLine\":0,\"lastVisibleLine\":0")
                 .Append(",\"targetBlock\":-1,\"targetBlockOffset\":0,\"targetBlockLine\":0");
         }

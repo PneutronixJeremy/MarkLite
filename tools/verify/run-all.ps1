@@ -60,6 +60,7 @@ $scripts = @(
     'test-gutter.ps1'
     'test-reload.ps1'
     'test-session.ps1'
+    'test-resize.ps1'
     'test-selection.ps1'
 )
 

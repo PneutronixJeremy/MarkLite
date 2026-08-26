@@ -320,7 +320,7 @@ Results:
   cannot read.
 
 ## Phase 4: Keep the reading position across a window resize
-Status: Not started
+Status: Complete
 
 Requested by the user 2026-08-26, while Phase 1 was being verified. Resizing
 the window keeps the **absolute** scroll offset, but a width change re-wraps
@@ -328,22 +328,22 @@ every block and re-measures the realized ones, so the offset no longer points
 at the same text — the reader is dropped somewhere else in the document, and
 the taller the document the further off it lands.
 
-- [ ] Capture the anchor **before** the layout pass a size change triggers:
+- [x] Capture the anchor **before** the layout pass a size change triggers:
   `VirtualBlockPanel.FirstVisibleBlock` plus the offset within that block, the
   same pair `DocumentTab.CaptureScroll` already records and `dump-state`
   reports as `firstVisibleBlock` / `anchorWithin`.
-- [ ] Restore it **after** the pass, once the new widths have been measured:
+- [x] Restore it **after** the pass, once the new widths have been measured:
   scroll to `BlockOffset(block) + within`. The within-block offset is only
   meaningful up to the re-wrap; clamp it to the block's new height rather than
   letting it spill into the next block.
-- [ ] Width changes only. A height-only resize does not re-wrap anything, and
+- [x] Width changes only. A height-only resize does not re-wrap anything, and
   re-anchoring it would move the document under a reader who only made the
   window taller.
-- [ ] The active tab is the one being resized, but every tab's viewer is laid
+- [x] The active tab is the one being resized, but every tab's viewer is laid
   out at the same width. Decide whether background tabs re-anchor on their next
   activation (their `SavedScroll` already exists) rather than doing work for
   windows nobody is looking at.
-- [ ] Watch the interaction with the anchored reload path — both write the
+- [x] Watch the interaction with the anchored reload path — both write the
   scroll offset, and a resize during a reload must not fight it.
 
 ### Verification Plan
@@ -359,7 +359,50 @@ the taller the document the further off it lands.
 - `run-all.ps1` still ALL PASS.
 
 ### Phase Summary
-_(write when phase completes)_
+Most of what this phase asked for already existed: `VirtualBlockPanel`
+`MeasureOverride` already noticed a width change, captured the anchor and held
+the reader on it across the re-measure (`HoldAnchor`). A single width jump was
+already correct, on the stress fixture and on prose. So the phase became: find
+what the user was actually seeing, and fix that.
+
+**A resize drag is not a resize.** Dragging a window edge is dozens of small
+width changes. The scroll correction is applied from outside the layout pass
+(the ScrollViewer re-clamps anything written during Arrange), so each step
+arrived before the previous correction had landed, re-read the anchor from an
+offset that was still on its way, and held *that*. The error compounded: a drag
+from 100 % to 64 % width moved the reader from block 25 to block 11, and coming
+back did not undo it. Two changes fix it:
+- while a hold is in flight, a further width change **extends** it rather than
+  re-capturing (`ExtendAnchorHold`);
+- the hold is released only when the target has stopped moving **and** the
+  scroller has actually reached it, so a drag step can never see a released
+  hold with an uncorrected offset.
+
+**Jitter.** The correction was posted at `DispatcherPriority.Loaded`, which runs
+after the frame has been painted — so every pass drew the text in the wrong
+place and snapped it back one frame later. Now posted at `Render`, with a single
+retry at `Loaded` for the case the original priority was chosen for: a write
+clamped against an extent that is still growing.
+
+**"Still moves a bit."** The offset *within* the anchor block was carried over
+as a pixel count, but a paragraph that wraps to twice the height has its text
+twice as far down — so the reader landed a line or two above where they were.
+The offset is now scaled by how much the block grew, and the check compares the
+fraction rather than the pixels (`anchorBlockHeight` was added to `dump-state`
+for that). Verified at 0.3616 before and 0.3619 after a resize to 55 % width.
+
+Scope note (user, 2026-08-26): resizing is rare, so "does not drift" is the bar;
+sub-pixel perfection was explicitly not worth chasing.
+
+Results:
+- New `tools/verify/test-resize.ps1`, **12 checks, ALL PASS**, in `run-all.ps1`:
+  narrower, wider, the return trip, a stepped 12-step drag, a height-only change
+  (offset identical to 0.1 px), the proportional position inside the block, and
+  a tab resized while it was **inactive** coming back to the same block — only
+  the active tab is laid out, so an inactive tab meets the new width on
+  activation and relies on its stored block anchor.
+- `run-all.ps1`: ALL PASS (9 scripts). `dotnet test` 62/62. `build/publish.ps1`
+  exit 0, no warnings. `tools/scrub-check.ps1` clean.
 
 ## Phase 5: Release v1.2.0
 Status: Not started

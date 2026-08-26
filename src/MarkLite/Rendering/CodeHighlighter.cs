@@ -123,10 +123,29 @@ internal sealed class CodeHighlighter : CodeColorizerBase
         IBrush? brush = null;
         if (Styles.Contains(scopeName) && Styles[scopeName].Foreground is { Length: > 0 } hex)
         {
-            brush = new SolidColorBrush(Color.Parse(hex));
+            brush = BrushFromHex(hex, scopeName);
         }
 
         _brushCache[scopeName] = brush;
         return brush;
+    }
+
+    /*  ColorCode's own style dictionaries carry malformed literals: the dark
+        theme's "XML Name" reads "#FF#E6E6E6" and "SQL System Function" has no
+        leading '#' at all. Color.Parse throws FormatException on both, and an
+        unhandled throw inside a render pass takes the whole process down — an
+        xml fence in a dark-theme document was enough to kill the app.
+        Normalize to a single leading '#', and leave the scope unstyled if the
+        value still is not a color. */
+    internal static IBrush? BrushFromHex(string hex, string scopeName)
+    {
+        var digits = hex.Replace("#", string.Empty).Trim();
+        if (digits.Length is not (6 or 8) || !Color.TryParse($"#{digits}", out var color))
+        {
+            DebugLog.Write($"code highlight: unusable color '{hex}' for scope '{scopeName}'");
+            return null;
+        }
+
+        return new SolidColorBrush(color);
     }
 }

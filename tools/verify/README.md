@@ -92,6 +92,16 @@ Ground rules:
   setext). On a document over 1000 blocks it also re-checks the working set and
   the realized fraction with the numbers showing, because the gutter draws and
   must never build controls. Leaves the setting off.
+- **`test-session.ps1 [-Exe path]`** — Options > Reopen last session. Records a
+  session (three temp copies of fixtures, the active one parked mid-document),
+  closes the window with `WM_CLOSE`, and relaunches four times over: plain (same
+  files in the same order, same active tab, same `firstVisibleBlock`), with a
+  file argument (it opens on top of the session and is the active tab), with one
+  of the files deleted (dropped with a log line, no error tab), and with the
+  setting turned off (welcome page, nothing stored). The store is keyed per
+  instance group, so this never reaches the user's own tabs, and it is the only
+  script that passes `-KeepSession` — every other launch clears the key so a
+  previous script's tabs cannot inflate its tab counts.
 - **`test-selection.ps1 [-Exe path] [-CaptureDir dir]`** — selection, copy and
   link clicks. Copy hands back the **markdown source** the selection covers, and the selection is
   addressed by block and character, so it can span parts of the document that

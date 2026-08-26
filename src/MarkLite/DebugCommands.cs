@@ -253,6 +253,15 @@ public partial class MainWindow
                 return showLines ? "shown" : "hidden";
             }
 
+            case "session":
+            {
+                /*  The Options toggle, without a menu: "session off" is how a
+                    check exercises the setting itself. */
+                var enabled = !string.Equals(argument, "off", StringComparison.OrdinalIgnoreCase);
+                SetSessionRestore(enabled);
+                return $"{(enabled ? "on" : "off")}, {StoredSessionCount} tabs stored";
+            }
+
             case "gc":
             {
                 GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
@@ -422,7 +431,9 @@ public partial class MainWindow
             it: a check reading this is asserting on the text the user sees,
             and submenu items are not in the UI Automation tree until the menu
             is opened. */
-        builder.Append(",\"version\":")
+        builder.Append(",\"restoreSession\":").Append(SessionRestoreEnabled ? "true" : "false")
+            .Append(",\"sessionCount\":").Append(StoredSessionCount)
+            .Append(",\"version\":")
             .Append(JsonString(this.FindControl<MenuItem>("VersionItem")?.Header as string ?? string.Empty))
             .Append(",\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))
             .Append(",\"tocCount\":").Append(_activeTab?.TocEntries.Count ?? 0)

@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using Microsoft.Win32;
 
 namespace MarkLite;
@@ -9,6 +11,30 @@ namespace MarkLite;
 internal static class UserSettings
 {
     private const string KeyPath = @"Software\MarkLite";
+
+    /*  Where the reopen-last-session state lives. A launch that sets
+        MARKLITE_INSTANCE forms its own single-instance group — that is how a
+        verification run drives a MarkLite of its own while the user keeps
+        working — and it gets its own session store to match. Without that,
+        scripted runs would inherit the user's open documents, and worse, hand
+        their fixtures back to the user's next launch. Scoping rather than
+        disabling keeps the feature itself testable: a script exercises the
+        real code against a key nobody else reads.
+
+        The instance name is script-chosen, so only word characters survive
+        into the key path — a stray backslash would otherwise pick the subkey. */
+    private static string SessionKeyPath { get; } = BuildSessionKeyPath();
+
+    private static string BuildSessionKeyPath()
+    {
+        if (Environment.GetEnvironmentVariable("MARKLITE_INSTANCE") is not { Length: > 0 } instance)
+        {
+            return KeyPath;
+        }
+
+        var safe = new string(instance.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
+        return $@"{KeyPath}\Instances\{(safe.Length > 0 ? safe : "instance")}";
+    }
 
     /*  View > Show HTML comments. Default ON: a comment is content the author
         wrote, and silently hiding it is what made this setting necessary. Null
@@ -55,6 +81,75 @@ internal static class UserSettings
             else
             {
                 key.SetValue("ShowLineNumbers", value.Value ? 1 : 0, RegistryValueKind.DWord);
+            }
+        }
+    }
+
+    /*  Options > Reopen last session. Default ON, Notepad's behaviour: the
+        documents that were open come back, which matters most across an update
+        restart nobody asked for. Null means never set. */
+    internal static bool? RestoreSession
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(SessionKeyPath);
+            return key?.GetValue("RestoreSession") is int stored ? stored != 0 : null;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(SessionKeyPath);
+            if (value is null)
+            {
+                key.DeleteValue("RestoreSession", throwOnMissingValue: false);
+            }
+            else
+            {
+                key.SetValue("RestoreSession", value.Value ? 1 : 0, RegistryValueKind.DWord);
+            }
+        }
+    }
+
+    /// <summary>One entry per open tab in tab-strip order, or null when no session is stored.
+    /// Entry format is owned by MainWindow; see SessionEntry.</summary>
+    internal static string[]? Session
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(SessionKeyPath);
+            return key?.GetValue("Session") as string[];
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(SessionKeyPath);
+            if (value is null || value.Length == 0)
+            {
+                key.DeleteValue("Session", throwOnMissingValue: false);
+            }
+            else
+            {
+                key.SetValue("Session", value, RegistryValueKind.MultiString);
+            }
+        }
+    }
+
+    /// <summary>Which entry of <see cref="Session"/> was the active tab.</summary>
+    internal static int? SessionActiveIndex
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(SessionKeyPath);
+            return key?.GetValue("SessionActiveIndex") as int?;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(SessionKeyPath);
+            if (value is null)
+            {
+                key.DeleteValue("SessionActiveIndex", throwOnMissingValue: false);
+            }
+            else
+            {
+                key.SetValue("SessionActiveIndex", value.Value, RegistryValueKind.DWord);
             }
         }
     }

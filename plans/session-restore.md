@@ -138,43 +138,43 @@ Results, all on the published AOT exe:
 - `run-all.ps1`: ALL PASS (7 scripts).
 
 ## Phase 2: Reopen last session
-Status: Not started
+Status: Complete
 
-- [ ] `UserSettings` gains:
+- [x] `UserSettings` gains:
   - `RestoreSession` (bool?, DWORD) — the Options toggle; null means the
     default, which is **on**.
   - `Session` (string[]?, `REG_MULTI_SZ`) — one entry per open tab, in tab-strip
     order.
   - `SessionActiveIndex` (int?, DWORD) — which of them was active.
-- [ ] Session entry format: `path|blockIndex|blockHash|offsetWithin`, matching
+- [x] Session entry format: `path|blockIndex|blockHash|offsetWithin`, matching
   `ScrollRestore`'s fields, so a restored tab lands on the paragraph the reader
   was on rather than at the top. The block hash is what makes that survive the
   file being edited between sessions — the existing `RestoreScroll` already
   prefers hash over index. `|` is not legal in a Windows path.
-- [ ] **Save on every change, not only on close.** `ApplyUpdatesAndRestart`
+- [x] **Save on every change, not only on close.** `ApplyUpdatesAndRestart`
   hands the process to Velopack, which terminates it — `Window.Closed` cannot be
   relied on, and the update restart is the case this feature exists for. Save
   after `OpenFile` adds a tab, after `CloseTab`, and on `ActivateTab` (which
   already captures the outgoing tab's scroll anchor). Also save in the `Closed`
   handler, which is the only place the *active* tab's live scroll position can
   be captured.
-- [ ] Restore in the constructor, before the `args` branch: read the list, open
+- [x] Restore in the constructor, before the `args` branch: read the list, open
   each path that still exists, apply each entry's `ScrollRestore`, then activate
   the saved index. With a file argument, open it afterwards so it becomes the
   active tab (user decision above). With no argument and no session, the
   welcome page as today.
-- [ ] **Files that no longer exist are skipped silently** (one debug log line
+- [x] **Files that no longer exist are skipped silently** (one debug log line
   each). Restoring five "Cannot open file" tabs would be worse than restoring
   nothing. A session that ends up empty falls through to the welcome page.
-- [ ] **Never save or restore when `MARKLITE_INSTANCE` is set.** Verification
+- [x] **Never save or restore when `MARKLITE_INSTANCE` is set.** Verification
   runs form their own single-instance group; if they also shared the session
   they would carry tabs between unrelated script runs and every existing check's
   tab assertions would start failing intermittently. The gate belongs in
   `UserSettings` so no caller can forget it.
-- [ ] Options menu: `Reopen last session`, `ToggleType="CheckBox"`, checked
+- [x] Options menu: `Reopen last session`, `ToggleType="CheckBox"`, checked
   state restored at startup like the View toggles. Turning it **off clears the
   stored session** rather than leaving a stale one behind.
-- [ ] `dump-state` reports `restoreSession` (the setting) and `sessionCount`
+- [x] `dump-state` reports `restoreSession` (the setting) and `sessionCount`
   (entries currently stored), so a script can assert without reading the
   registry itself.
 
@@ -198,7 +198,49 @@ Status: Not started
 - `tools/scrub-check.ps1` exit 0.
 
 ### Phase Summary
-_(write when phase completes)_
+`SessionState.cs` (new partial of `MainWindow`) owns the feature: `SaveSession`
+writes one `REG_MULTI_SZ` entry per tab as `path|blockIndex|blockHash|
+offsetWithin`, `RestoreSession` reopens them in the constructor, and
+`SetSessionRestore` backs the Options toggle. `UserSettings` gained
+`RestoreSession`, `Session` and `SessionActiveIndex`.
+
+Three things the plan did not anticipate, all of them load-bearing:
+
+1. **The instance gate is a scope, not an off switch.** Disabling the feature
+   whenever `MARKLITE_INSTANCE` is set would have made it untestable — every
+   verification launch sets it. The store lives under
+   `Software\MarkLite\Instances\<name>` for such a launch instead, so a
+   scripted run can exercise the real code while the user's own tabs stay out
+   of reach. `Start-MarkLite` clears that key unless the caller passes
+   `-KeepSession`; without it, tabs left by one script would reappear in the
+   next and every tab count in the suite would drift.
+2. **The reading position cannot be restored from the constructor.** The window
+   is not laid out yet, so the offset is clamped to zero and stays there. It is
+   applied from `Opened` — and not with a posted callback either: the panel
+   measures its way toward the anchor over several passes, and Background-priority
+   work is overtaken indefinitely by layout and by the debug command pipe. A
+   50 ms timer retries until the anchor block is the one at the top of the
+   viewport (typically 1-3 passes, 2 s cap).
+3. **The close-time capture cannot be trusted.** Reading the active tab's
+   position from the `Closed` handler returns block 0 often enough to overwrite
+   a good anchor with the top of the file. The position is now captured on every
+   scroll event (cheap) with the registry write debounced 400 ms behind it, and
+   `SaveSession` only ever reads `SavedScroll`. Restored anchors are also applied
+   *after* the whole reopen loop, because each `OpenFile` activates its new tab
+   and activation captures the outgoing tab's position over whatever was there.
+
+Results:
+- New `tools/verify/test-session.ps1` (20 checks) in `run-all.ps1`: ALL PASS,
+  six consecutive runs with no flake. It covers the plain relaunch (three tabs,
+  same order, same active index, same `firstVisibleBlock`), the file argument
+  landing on top as the active tab, a deleted file dropped with a log line and
+  no error tab, and the setting turning it off and clearing the store.
+- `run-all.ps1`: ALL PASS (8 scripts). `dotnet test` 62/62.
+- Memory on `sample.md`: 74.6 MB first render against **74.9 MB for the shipped
+  v1.1.1 binary measured back to back on the same machine** — no cost. (The
+  72.3 MB the plan quoted is an older measurement from different conditions;
+  the like-for-like comparison is the one above.)
+- `build/publish.ps1` exit 0, no warnings; `tools/scrub-check.ps1` clean.
 
 ## Phase 3: A handoff raises the window
 Status: Not started

@@ -90,6 +90,10 @@
                           ToggleType="CheckBox"
                           Click="OnRegisterOpenWithClicked" />
                 <MenuItem Header="Make MarkLite the _default…" Click="OnMakeDefaultClicked" />
+                <Separator />
+                <MenuItem Name="ReopenSessionItem" Header="_Reopen last session"
+                          ToggleType="CheckBox" IsChecked="True"
+                          Click="OnReopenSessionClicked" />
             </MenuItem>
             <MenuItem Header="_Help">
                 <!-- Header set from code; no mnemonic, it is not reachable by keyboard. -->

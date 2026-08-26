@@ -160,6 +160,13 @@ function Move-ToSecondaryScreen {
         $SWP_NOACTIVATE -bor $SWP_NOZORDER)
 }
 
+<#  Removes the verification instance group's stored session (Options > Reopen
+    last session). The user's own session lives under a different key and is
+    never touched. #>
+function Clear-MarkLiteSession {
+    Remove-Item 'HKCU:\Software\MarkLite\Instances\verify' -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 <#  Starts the primary instance with debug logging on and waits until it has
     rendered content. Returns the process object; the stderr log path is
     available from Get-VerifyLogPath. #>
@@ -167,7 +174,8 @@ function Start-MarkLite {
     param(
         [string]$File,
         [int]$TimeoutSec = 60,
-        [string]$LogName = 'marklite'
+        [string]$LogName = 'marklite',
+        [switch]$KeepSession
     )
 
     if (-not (Test-Path -LiteralPath $script:Exe)) {
@@ -186,6 +194,14 @@ function Start-MarkLite {
     #  never receive the test documents, and must never answer debug commands.
     $env:MARKLITE_INSTANCE = 'verify'
     Remove-Item Env:MARKLITE_STANDALONE -ErrorAction SilentlyContinue
+
+    <#  Reopen-last-session is scoped to the instance group, so the tabs a
+        previous script left behind would come back here and every tab count in
+        this suite would be off by whatever ran before. Cleared unless the
+        caller is the one script that is checking the feature. #>
+    if (-not $KeepSession) {
+        Clear-MarkLiteSession
+    }
 
     foreach ($stray in @(Get-Process -Name 'MarkLite' -ErrorAction SilentlyContinue)) {
         if ($stray.Path -eq $script:Exe) {
@@ -211,7 +227,9 @@ function Start-MarkLite {
     if ($File) {
         [void](Wait-Log -Pattern 'first content render' -TimeoutSec $TimeoutSec)
     } else {
-        [void](Wait-Log -Pattern 'welcome state' -TimeoutSec $TimeoutSec)
+        #  A launch with no argument lands on the welcome page - unless a stored
+        #  session brings tabs back, which is a finished startup just as much.
+        [void](Wait-Log -Pattern 'welcome state|session restored' -TimeoutSec $TimeoutSec)
     }
 
     #  MainWindowHandle is populated a moment after the first render.

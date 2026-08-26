@@ -129,6 +129,11 @@ public partial class MainWindow : Window
 
         Closed += (_, _) =>
         {
+            /*  Before the tabs go: the active tab's scroll position is live
+                only while its viewer is. Every other change saves as it
+                happens, because an update restart never reaches this handler. */
+            SaveSession();
+
             foreach (var tab in _tabs)
             {
                 tab.Dispose();
@@ -185,11 +190,19 @@ public partial class MainWindow : Window
             DebugLog.Write($"body font from env: {bodyFont}");
         }
 
+        /*  Reopen last session: unset means on. The stored tabs come back
+            first, so a file argument opens ON TOP of them and ends up active —
+            the session is the app's own state and the argument is an addition
+            to it, which is how Notepad behaves. */
+        var restoreSession = UserSettings.RestoreSession ?? true;
+        this.FindControl<MenuItem>("ReopenSessionItem")!.IsChecked = restoreSession;
+        var sessionRestored = RestoreSession();
+
         if (args.Length > 0)
         {
             OpenFile(args[0]);
         }
-        else
+        else if (!sessionRestored)
         {
             ShowWelcome();
         }
@@ -215,6 +228,7 @@ public partial class MainWindow : Window
         Opened += (_, _) =>
         {
             DebugLog.Write($"startup: window opened {Program.StartupTimer.ElapsedMilliseconds} ms after process start");
+            ApplySessionScroll();
             OfferOpenWith();
             _ = CheckForUpdatesInBackground();
         };
@@ -318,6 +332,11 @@ public partial class MainWindow : Window
             FileAssociation.Register();
         }
         this.FindControl<MenuItem>("RegisterOpenWithItem")!.IsChecked = FileAssociation.IsRegistered;
+    }
+
+    private void OnReopenSessionClicked(object? sender, RoutedEventArgs e)
+    {
+        SetSessionRestore(this.FindControl<MenuItem>("ReopenSessionItem")!.IsChecked);
     }
 
     private void OnMakeDefaultClicked(object? sender, RoutedEventArgs e)
@@ -536,6 +555,7 @@ public partial class MainWindow : Window
         ActivateTab(tab);
         LoadIntoTab(tab, fullPath ?? path);
         UpdateTabStripVisibility();
+        SaveSession();
         DebugLog.Write($"tab opened '{tab.DisplayName}' ({_tabs.Count} tabs)");
     }
 
@@ -589,6 +609,7 @@ public partial class MainWindow : Window
             if (_activeTab == tab)
             {
                 UpdateCurrentSection();
+                MarkSessionDirty();
             }
         };
         nameButton.Click += (_, _) => ActivateTab(tab);
@@ -696,6 +717,11 @@ public partial class MainWindow : Window
         _findBox.Text = tab.SearchTerm;
         _suppressFindEvents = false;
 
+        /*  The switch just captured the outgoing tab's position and changed
+            which tab is active — both belong in the stored session, and an
+            update restart may never give another chance to write them. */
+        SaveSession();
+
         if (tab.CurrentText is not null)
         {
             /*  The incoming tab has no control tree — the switch away dropped
@@ -746,6 +772,7 @@ public partial class MainWindow : Window
             }
         }
         UpdateTabStripVisibility();
+        SaveSession();
     }
 
     private void ShowWelcome()

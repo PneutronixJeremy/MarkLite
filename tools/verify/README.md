@@ -92,6 +92,20 @@ Ground rules:
   setext). On a document over 1000 blocks it also re-checks the working set and
   the realized fraction with the numbers showing, because the gutter draws and
   must never build controls. Leaves the setting off.
+- **`test-scrollbars.ps1 [-Exe path] [-CaptureDir dir]`** — View > Wide scroll
+  bars. Generates a 300-paragraph fixture with no code fences (so the only bar
+  in the capture is the document's own) and asserts that a fresh install has
+  the option on with the document's vertical bar reporting `IsExpanded` while
+  no pointer is near the window; that `wide-scrollbars off` collapses it once
+  the hide delay runs out; that the toggle costs exactly what Fluent charges
+  for a permanent bar — the active tab's `viewportWidth` shrinks by 16 DIP and
+  its height not at all (an auto-hiding bar overlays the content; a permanent
+  one gets its own column), a capture diff finds every differing pixel inside
+  the document column, and a reader parked deep in the document stays on the
+  same block through the re-wrap in both directions, as `test-resize.ps1`
+  demands of a window drag; and that the setting survives a restart. The
+  setting lives in the shared MarkLite key, so the script clears it for the
+  fresh-install check and leaves it on (the default) when done.
 - **`test-session.ps1 [-Exe path]`** — Options > Reopen last session. Records a
   session (three temp copies of fixtures, the active one parked mid-document),
   closes the window with `WM_CLOSE`, and relaunches four times over: plain (same

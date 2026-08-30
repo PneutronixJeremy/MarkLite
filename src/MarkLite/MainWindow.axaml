@@ -4,8 +4,23 @@
         Title="MarkLite"
         Icon="avares://MarkLite/Assets/MarkLite.ico"
         Width="1000" Height="750"
+        Classes="WideScrollBars"
         DragDrop.AllowDrop="True">
     <Window.Styles>
+        <!--  View > Wide scroll bars. Fluent collapses an idle bar's thumb to a
+              hairline while AllowAutoHide is on; this keeps every bar in the
+              window (document, sidebar, tab strip, code blocks) at its expanded
+              look. AllowAutoHide is template-bound onto both of a ScrollViewer's
+              bars, so one class on the window is the whole switch. Fluent lays
+              an auto-hiding bar OVER the content and gives a permanent one its
+              own 16 px column, so the toggle is a 16 px width change for the
+              document — it re-wraps like a small window resize, and text never
+              runs under the bar. Popup ScrollViewers (menus) have their own
+              visual root and are not reached, which is fine: they are not for
+              reading.  -->
+        <Style Selector="Window.WideScrollBars ScrollViewer">
+            <Setter Property="AllowAutoHide" Value="False" />
+        </Style>
         <Style Selector="Button.TocEntry">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -83,6 +98,8 @@
                           Click="OnShowHtmlCommentsClicked" ToggleType="CheckBox" IsChecked="True" />
                 <MenuItem Name="ShowLineNumbersItem" Header="Show _line numbers"
                           Click="OnShowLineNumbersClicked" ToggleType="CheckBox" />
+                <MenuItem Name="WideScrollBarsItem" Header="_Wide scroll bars"
+                          Click="OnWideScrollBarsClicked" ToggleType="CheckBox" IsChecked="True" />
             </MenuItem>
             <MenuItem Header="_Options">
                 <MenuItem Name="RegisterOpenWithItem"
@@ -108,9 +125,10 @@
                 Background="{DynamicResource MdTableHeaderBackground}"
                 BorderBrush="{DynamicResource MdTableBorder}"
                 BorderThickness="0,0,0,1">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel Name="TabStrip" Orientation="Horizontal" Spacing="2" Margin="4,3,4,0" />
-            </ScrollViewer>
+            <!--  Tabs wrap onto further rows when they run out of width; nothing
+                  scrolls, so every open document stays one click away and the
+                  strip never grows a scroll bar of its own.  -->
+            <WrapPanel Name="TabStrip" Orientation="Horizontal" ItemSpacing="2" LineSpacing="2" Margin="4,3,4,0" />
         </Border>
         <Border Name="FindBar"
                 DockPanel.Dock="Top"

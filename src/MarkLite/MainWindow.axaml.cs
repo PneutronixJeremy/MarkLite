@@ -174,6 +174,15 @@ public partial class MainWindow : Window
             DebugLog.Write($"line numbers restored: {(showLineNumbers ? "shown" : "hidden")}");
         }
 
+        /*  Wide scroll bars: the XAML default is on (the window carries the
+            class); a stored choice overrides it before the first render so the
+            bars never flip in front of the reader. */
+        if (UserSettings.WideScrollBars is { } wideScrollBars)
+        {
+            ApplyWideScrollBars(wideScrollBars);
+            DebugLog.Write($"wide scroll bars restored: {(wideScrollBars ? "on" : "off")}");
+        }
+
         /*  Body font: the saved choice first, then the MARKLITE_BODYFONT
             debug/testing env hook on top (scripted font checks can't click
             menus). Both run before the first render. */
@@ -487,6 +496,42 @@ public partial class MainWindow : Window
         _activeTab?.Viewer.Panel.InvalidateGutter();
     }
 
+    /// <summary>View > Wide scroll bars: every bar keeps Fluent's expanded look instead of
+    /// collapsing to the thin idle strip. Layout is untouched either way.</summary>
+    private void OnWideScrollBarsClicked(object? sender, RoutedEventArgs e)
+    {
+        SetWideScrollBars(!WideScrollBarsOn);
+    }
+
+    /// <summary>Whether the window carries the class the wide-bar style keys on.</summary>
+    private bool WideScrollBarsOn => Classes.Contains("WideScrollBars");
+
+    private void SetWideScrollBars(bool wide)
+    {
+        ApplyWideScrollBars(wide);
+        UserSettings.WideScrollBars = wide;
+        DebugLog.Write($"wide scroll bars: {(wide ? "on" : "off")}");
+    }
+
+    /*  The class on the window is the whole mechanism: a window-level style
+        turns AllowAutoHide off on every descendant ScrollViewer, template
+        children included, so no viewer has to be tracked individually. */
+    private void ApplyWideScrollBars(bool wide)
+    {
+        if (wide)
+        {
+            if (!WideScrollBarsOn)
+            {
+                Classes.Add("WideScrollBars");
+            }
+        }
+        else
+        {
+            Classes.Remove("WideScrollBars");
+        }
+        this.FindControl<MenuItem>("WideScrollBarsItem")!.IsChecked = wide;
+    }
+
     /// <summary>View > Body font. Swaps the app-level font token and re-renders.</summary>
     private void OnBodyFontClicked(object? sender, RoutedEventArgs e)
     {
@@ -580,7 +625,7 @@ public partial class MainWindow : Window
 
         var tab = CreateTab();
         _tabs.Add(tab);
-        this.FindControl<StackPanel>("TabStrip")!.Children.Add(tab.StripItem);
+        this.FindControl<WrapPanel>("TabStrip")!.Children.Add(tab.StripItem);
         ActivateTab(tab);
         LoadIntoTab(tab, fullPath ?? path);
         UpdateTabStripVisibility();
@@ -783,7 +828,7 @@ public partial class MainWindow : Window
         }
 
         _tabs.RemoveAt(index);
-        this.FindControl<StackPanel>("TabStrip")!.Children.Remove(tab.StripItem);
+        this.FindControl<WrapPanel>("TabStrip")!.Children.Remove(tab.StripItem);
         _viewerHost.Children.Remove(tab.Viewer);
         tab.Dispose();
         DebugLog.Write($"tab closed '{tab.DisplayName}' ({_tabs.Count} tabs)");

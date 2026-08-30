@@ -2,8 +2,12 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.VisualTree;
 
 namespace MarkLite;
 
@@ -253,6 +257,13 @@ public partial class MainWindow
                 return showLines ? "shown" : "hidden";
             }
 
+            case "wide-scrollbars":
+            {
+                var wide = !string.Equals(argument, "off", StringComparison.OrdinalIgnoreCase);
+                SetWideScrollBars(wide);
+                return wide ? "on" : "off";
+            }
+
             case "session":
             {
                 /*  The Options toggle, without a menu: "session off" is how a
@@ -369,6 +380,7 @@ public partial class MainWindow
                 .Append(",\"scrollY\":").Append(Number(scroller?.Offset.Y ?? 0))
                 .Append(",\"extent\":").Append(Number(scroller?.Extent.Height ?? 0))
                 .Append(",\"viewport\":").Append(Number(scroller?.Viewport.Height ?? 0))
+                .Append(",\"viewportWidth\":").Append(Number(scroller?.Viewport.Width ?? 0))
                 .Append(",\"stale\":").Append(tab.StaleMessage is null ? "false" : "true")
                 .Append('}');
         }
@@ -445,6 +457,13 @@ public partial class MainWindow
             .Append(",\"tocCount\":").Append(_activeTab?.TocEntries.Count ?? 0)
             .Append(",\"tocIndex\":").Append(_currentTocIndex)
             .Append(",\"gutterVisible\":").Append(Rendering.Virtual.GutterPanel.Enabled ? "true" : "false")
+            .Append(",\"wideScrollBars\":").Append(WideScrollBarsOn ? "true" : "false")
+            /*  The document bar's own state, not the setting: with auto-hide
+                off a bar holds IsExpanded permanently, so this is the signal
+                that the style actually reached the viewer. False with no
+                document, and false again once an auto-hiding bar has collapsed
+                with the pointer away. */
+            .Append(",\"scrollBarExpanded\":").Append(ActiveVerticalScrollBar?.IsExpanded == true ? "true" : "false")
             .Append(",\"findVisible\":").Append(_findVisible ? "true" : "false")
             .Append(",\"matches\":").Append(_activeTab?.Search.Count ?? 0)
             .Append(",\"matchIndex\":").Append(_activeTab?.Search.CurrentOrdinal ?? -1)
@@ -463,6 +482,10 @@ public partial class MainWindow
             .Append('}');
         return builder.ToString();
     }
+
+    private ScrollBar? ActiveVerticalScrollBar =>
+        _activeTab?.Scroller?.GetVisualDescendants().OfType<ScrollBar>()
+            .FirstOrDefault(bar => bar.Orientation == Orientation.Vertical);
 
     private static string Number(double value)
     {

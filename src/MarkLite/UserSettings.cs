@@ -85,6 +85,30 @@ internal static class UserSettings
         }
     }
 
+    /*  View > Wide scroll bars. Default ON: Fluent's idle bar is a hairline
+        that reads as decoration, and a document reader wants the bar it can
+        aim at without hovering first. Null means never set. */
+    internal static bool? WideScrollBars
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(KeyPath);
+            return key?.GetValue("WideScrollBars") is int stored ? stored != 0 : null;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(KeyPath);
+            if (value is null)
+            {
+                key.DeleteValue("WideScrollBars", throwOnMissingValue: false);
+            }
+            else
+            {
+                key.SetValue("WideScrollBars", value.Value ? 1 : 0, RegistryValueKind.DWord);
+            }
+        }
+    }
+
     /*  Options > Reopen last session. Default ON, Notepad's behaviour: the
         documents that were open come back, which matters most across an update
         restart nobody asked for. Null means never set. */

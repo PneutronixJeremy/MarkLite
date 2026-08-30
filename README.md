@@ -69,10 +69,13 @@ one. Zero `msedgewebview2.exe` children, ever.
   find and copy all work over the whole document regardless of what is on
   screen.
 - Tabs: multiple documents, per-tab scroll/search/watcher; only the active tab
-  holds a rendered tree, so open tabs cost their text and nothing else. A second
+  holds a rendered tree, so open tabs cost their text and nothing else. Tabs
+  wrap onto rows when they run out of width, and dragging one along the strip
+  reorders them — the order is part of the saved session. A second
   launch hands its file to the running instance over a named pipe.
 - Contents sidebar (Ctrl+T) built from the document's heading tree, with
-  current-section tracking and working in-document `#anchor` links.
+  current-section tracking and working in-document `#anchor` links. Drag the
+  divider to resize it (double-click resets); the width is remembered.
 - Find in document (Ctrl+F): live highlighting, F3 / Shift+F3 navigation with
   wraparound, match counter, survives live reload.
 - Live reload: edits from any editor appear ~150 ms after save, scroll position
@@ -91,6 +94,9 @@ one. Zero `msedgewebview2.exe` children, ever.
   were never rendered.
 - View > Show line numbers: a source-line gutter, numbering every line inside
   fenced code and the starting line of everything else.
+- View > Wide scroll bars (on by default): every scroll bar keeps its full
+  thumb and track instead of collapsing to Fluent's thin idle strip — a
+  document app wants a bar you can aim at without hovering first.
 - View > Show HTML comments: `<!-- … -->` shown dimmed rather than hidden, so a
   document's own markers stay visible. Other raw HTML stays dropped.
 - Installer + auto-update via [Velopack](https://velopack.io): per-user install

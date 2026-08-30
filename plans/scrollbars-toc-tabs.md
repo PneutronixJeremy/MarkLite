@@ -341,16 +341,16 @@ the events anyway.
   cross-row drop, ✕ never dragging).
 
 ## Phase 4: Release v1.3.0
-Status: Not started
+Status: In progress
 
-- [ ] README: Features bullets — `View > Wide scroll bars` (on by default),
-  the sidebar is resizable and remembers its width, tabs reorder by drag.
-  Adjust the "Contents sidebar (Ctrl+T)" and "Tabs" bullets rather than adding
-  three new ones where a clause will do.
-- [ ] `docs/release-notes/v1.3.0.md` — short, end-user facing (what changed for
-  them, not how), `## Added` / `## Fixed` sections as v1.2.0's.
-- [ ] `<Version>1.3.0</Version>` in `src/MarkLite/MarkLite.csproj`.
-- [ ] `tools/scrub-check.ps1` exit 0.
+- [x] README: Features bullets — `View > Wide scroll bars` (on by default) as
+  one new bullet beside the other View toggles; the "Contents sidebar" and
+  "Tabs" bullets gained their clauses (resizable + remembered; wrap onto rows +
+  drag to reorder, order in the session).
+- [x] `docs/release-notes/v1.3.0.md` — `## Added` only: nothing user-facing was
+  fixed this cycle, so no `## Fixed` section (v1.2.0's layout otherwise).
+- [x] `<Version>1.3.0</Version>` in `src/MarkLite/MarkLite.csproj`.
+- [x] `tools/scrub-check.ps1` exit 0.
 - [ ] **Commit and the user pushes BEFORE packing** (`docs/RELEASING.md`; the exe
   records HEAD as its source revision — v1.1.0 got this wrong). The agent never
   pushes, tags or uploads.

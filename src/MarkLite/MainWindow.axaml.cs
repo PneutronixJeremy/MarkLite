@@ -742,9 +742,142 @@ public partial class MainWindow : Window
                 e.Handled = true;
             }
         };
+        AttachTabDrag(tab, item, closeButton);
         tab.Watcher.ChangeSettled += () => OnTabFileChanged(tab);
 
         return tab;
+    }
+
+    /*  Drag-to-reorder. The name button captures the pointer on press and
+        marks press/release handled, so the item listens on the tunnel for the
+        press and with handledEventsToo for the rest; capture routes every
+        later event through the button and up to the item regardless of where
+        the pointer is. A press activates the tab (browser-style) and arms the
+        drag; the drag begins once the pointer has moved more than a few
+        pixels, so a plain click never disturbs the order. While dragging, the
+        pointer is hit-tested against the OTHER items' bounds — the strip wraps
+        onto rows, so a pointer on the second row lands on a second-row tab —
+        and the tab moves to the slot of the item under it. A neighbour only
+        counts once the pointer has crossed its midpoint, which is what makes
+        the shuffle feel like the tab slides past. Release or losing capture
+        ends the drag; every move already saved the session. */
+    private void AttachTabDrag(DocumentTab tab, Border item, Button closeButton)
+    {
+        const double dragThreshold = 6;
+        IPointer? pointer = null;
+        var pressX = 0.0;
+        var dragging = false;
+
+        item.AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            if (!e.GetCurrentPoint(item).Properties.IsLeftButtonPressed)
+            {
+                return;
+            }
+            /*  The close button is not a handle: pressing ✕ must only close. */
+            if (e.Source is Visual source && source.GetSelfAndVisualAncestors().Contains(closeButton))
+            {
+                return;
+            }
+            pointer = e.Pointer;
+            pressX = e.GetPosition(TabStrip).X;
+            dragging = false;
+            ActivateTab(tab);
+        }, RoutingStrategies.Tunnel);
+
+        item.AddHandler(PointerMovedEvent, (_, e) =>
+        {
+            if (pointer is null || e.Pointer != pointer)
+            {
+                return;
+            }
+            var position = e.GetPosition(TabStrip);
+            if (!dragging)
+            {
+                if (Math.Abs(position.X - pressX) <= dragThreshold)
+                {
+                    return;
+                }
+                dragging = true;
+                item.Classes.Add("TabItemDragging");
+                DebugLog.Write($"tab drag started '{tab.DisplayName}'");
+            }
+
+            var index = _tabs.IndexOf(tab);
+            var children = TabStrip.Children;
+            for (var i = 0; i < children.Count; ++i)
+            {
+                if (i == index)
+                {
+                    continue;
+                }
+                var bounds = children[i].Bounds;
+                if (!bounds.Contains(position))
+                {
+                    continue;
+                }
+                var midpoint = bounds.X + (bounds.Width / 2);
+                if (i == index - 1 && position.X > midpoint)
+                {
+                    break;
+                }
+                if (i == index + 1 && position.X < midpoint)
+                {
+                    break;
+                }
+                MoveTab(tab, i);
+                break;
+            }
+        }, handledEventsToo: true);
+
+        void EndDrag()
+        {
+            pointer = null;
+            if (dragging)
+            {
+                dragging = false;
+                item.Classes.Remove("TabItemDragging");
+                DebugLog.Write($"tab drag ended '{tab.DisplayName}' at {_tabs.IndexOf(tab)}");
+            }
+        }
+
+        item.AddHandler(PointerReleasedEvent, (_, e) =>
+        {
+            if (pointer is not null && e.Pointer == pointer)
+            {
+                EndDrag();
+            }
+        }, handledEventsToo: true);
+        item.PointerCaptureLost += (_, _) => EndDrag();
+    }
+
+    /// <summary>Moves a tab to another slot. <c>_tabs</c> is the order everything reads
+    /// (session, Ctrl+Tab, close-tab's neighbour), so it and the strip move in lockstep;
+    /// the strip item is re-inserted, never rebuilt, because it holds live handlers.</summary>
+    /// <returns>False when the move changed nothing.</returns>
+    private bool MoveTab(DocumentTab tab, int toIndex)
+    {
+        var from = _tabs.IndexOf(tab);
+        if (from < 0)
+        {
+            return false;
+        }
+        toIndex = Math.Clamp(toIndex, 0, _tabs.Count - 1);
+        if (toIndex == from)
+        {
+            return false;
+        }
+
+        _tabs.RemoveAt(from);
+        _tabs.Insert(toIndex, tab);
+        /*  Move, not RemoveAt+Insert: a removal detaches the item from the
+            visual tree for a moment, which releases the pointer capture a
+            drag rides on — the drag would end itself after one slot. Panel
+            handles a Move in place; the item never leaves the tree. */
+        TabStrip.Children.Move(from, toIndex);
+        DebugLog.Write($"tab moved '{tab.DisplayName}' {from} -> {toIndex}");
+        SaveSession();
+        return true;
     }
 
     private void LoadIntoTab(DocumentTab tab, string path)

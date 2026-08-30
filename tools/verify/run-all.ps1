@@ -54,6 +54,7 @@ $Exe = (Resolve-Path -LiteralPath $Exe).Path
     after the long scroll-through in test-virtual. #>
 $scripts = @(
     'test-tabs.ps1'
+    'test-tab-order.ps1'
     'test-html-comments.ps1'
     'test-virtual.ps1'
     'test-toc-search.ps1'

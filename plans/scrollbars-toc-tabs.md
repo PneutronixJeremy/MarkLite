@@ -238,7 +238,7 @@ drive, so the width moves from the Border to a named `ColumnDefinition`.
   should eye it (screenshot `toc-width-400.png` / `-250.png` in the captures).
 
 ## Phase 3: Drag tabs to reorder
-Status: Not started
+Status: Complete
 
 `TabStrip` is a `WrapPanel` of `Border.TabItem` (rows, no scrolling — see the
 decisions table); `_tabs` is
@@ -249,13 +249,17 @@ captures the pointer on press, so the item's handlers register with
 `handledEventsToo: true` (and the press with `RoutingStrategies.Tunnel`) to see
 the events anyway.
 
-- [ ] `MainWindow.axaml.cs`: `MoveTab(DocumentTab tab, int toIndex)` — clamps,
-  no-op when unchanged, moves the entry in `_tabs` and the `StripItem` in
-  `TabStrip.Children` (`RemoveAt` + `Insert`, never rebuilt — the items hold
-  live event subscriptions), `SaveSession()`, logs
-  `tab moved '<name>' <from> -> <to>`.
-- [ ] Drag state in `CreateTab` (per item, closures like the existing middle-
-  click handler): on left press not originating from the close button →
+- [x] `MainWindow.axaml.cs`: `MoveTab(DocumentTab tab, int toIndex)` — clamps,
+  returns false when unchanged, moves the entry in `_tabs` and the `StripItem`
+  in `TabStrip.Children` (**`Children.Move`, not `RemoveAt` + `Insert`**: the
+  plan's draft said remove/insert, but a removal detaches the item and
+  releases the pointer capture, so a drag ended itself after one slot — found
+  in the user's manual check; `Panel` handles a `Move` in place), never
+  rebuilt — the items hold live event subscriptions — `SaveSession()`, logs
+  `tab moved '<name>' <from> -> <to>`. (`TabStrip` is the name-generated
+  field; a hand-written property of the same name collides — CS0102.)
+- [x] Drag state: `AttachTabDrag(tab, item, closeButton)` called from
+  `CreateTab` (per item, closures): on left press not originating from the close button →
   remember the pointer and its X in `TabStrip` coordinates, and
   `ActivateTab(tab)` (browser-style; the button's later `Click` finds the tab
   already active and is a no-op). On move with the button held: once |ΔX| > 6 px
@@ -268,43 +272,73 @@ the events anyway.
   sibling's, right of the next sibling's), `MoveTab(tab, thatIndex)`; a pointer
   over a non-adjacent tab moves straight to that index. No `BringIntoView`: the
   strip wraps, nothing scrolls. Release or `PointerCaptureLost` ends the drag,
-  removes the class, and logs `tab drag ended` — one `SaveSession` already
-  happened per move. A press that never crossed the threshold changes nothing
-  but the active tab.
-- [ ] Close button unaffected: pressing ✕ never starts a drag (check
-  `e.Source` ancestry for the `TabClose` button); middle-click close as before.
-- [ ] `DebugCommands.cs`: `move-tab <from> <to>` → `MoveTab(_tabs[from], to)`;
-  out-of-range indices answer `ignored (n tabs)` and change nothing. The
+  removes the class, and logs `tab drag ended '<name>' at <index>` — one
+  `SaveSession` already happened per move. A press that never crossed the
+  threshold changes nothing but the active tab. Style: `Border.TabItem` now
+  always carries a transparent 1 px bottom border so `TabItemDragging`'s
+  accent brush does not change the item's height mid-drag.
+- [x] Close button unaffected: pressing ✕ never starts a drag (`e.Source`'s
+  `GetSelfAndVisualAncestors()` contains the close button → not a handle);
+  middle-click close as before.
+- [x] `DebugCommands.cs`: `move-tab <from> <to>` → `MoveTab(_tabs[from], to)`;
+  answers `moved '<name>' <from> -> <to>`, `unchanged`, or
+  `ignored (n tabs)` for any out-of-range index (nothing changes). The
   `tabs[]` array in `dump-state` already carries `index`, `name`, `active`.
-- [ ] `tools/verify/test-tab-order.ps1`: opens three fixtures (a, b, c; c
+- [x] `tools/verify/test-tab-order.ps1`: opens three fixtures (a, b, c; c
   active, as `test-tabs.ps1` does) and asserts:
   1. `move-tab 2 0` → names `c, a, b`, `activeTab` 0 (the active tab moved and
      is still the active one), each tab's `chars` travelled with its name;
-  2. `move-tab 0 2` → `a, b, c` again; `move-tab 1 1` → log says unchanged;
-     `move-tab 7 0` → `ignored`, order intact;
-  3. `move-tab 0 2` → `b, c, a`; `sessionCount` 3, log
-     `session saved: 3 tabs, active 2`; `Stop-MarkLite`; relaunch with
-     `-KeepSession` (the `test-session.ps1` pattern) → tabs come back as
-     `b, c, a` with `a` active — the order is what the session stores;
-  4. `close-tab` on the active tab lands on its right-hand neighbour by the
-     **new** order (existing behaviour, now over a reordered list).
-- [ ] `tools/verify/README.md` entry (and a sentence under the ground rules:
-  the tab drag joins the splitter drag in the "verified by hand" set, with
-  `move-tab` as the scripted stand-in).
-- [ ] `tools/scrub-check.ps1` exit 0.
+  2. `move-tab 0 2` → `a, b, c` again; `move-tab 1 1` → `unchanged`;
+     `move-tab 7 0` and `move-tab 0 -1` → `ignored (3 tabs)`, order intact;
+  3. `move-tab 0 2` → `b, c, a` with **c active at 1** (the plan's draft said
+     "active 2" / "a active" — arithmetic slip: `a` passing `c` slides `c` down
+     one; the app was right, the test was corrected); `sessionCount` 3, log
+     `session saved: 3 tabs, active 1`; `Stop-MarkLite`; relaunch with
+     `-KeepSession` → `b, c, a` with `c` active at 1;
+  4. `tab 0` then `close-tab` → `c, a` remain and `c` (the new right-hand
+     neighbour) is active.
+- [x] `tools/verify/README.md` entry plus the ground-rules sentence (splitter
+  drag and tab drag verified by hand; `toc-width` / `move-tab` run the code
+  each drag ends in). `run-all.ps1` list entry right after `test-tabs.ps1`.
+- [x] `tools/scrub-check.ps1` exit 0.
 
 ### Verification Plan
 - `build/publish.ps1` exit 0; `tools/verify/test-tab-order.ps1` → all PASS.
+  **Result: exit 0; ALL PASS (28 checks).**
 - `tools/verify/run-all.ps1` → every row PASS (`test-tabs.ps1` and
   `test-session.ps1` exercise the untouched paths around `_tabs`).
+  **Result: ALL PASS (12 scripts, first run).**
 - User acceptance (manual): drag a middle tab to either end and back — tabs
-  shuffle as the pointer crosses them, the strip scrolls when there are more
-  tabs than fit, releasing leaves the order as shown; a plain click still
-  switches tabs; ✕ still closes without ever starting a drag; Ctrl+Tab cycles
-  in the new order; the new order is back after a restart.
+  shuffle as the pointer crosses them; with enough tabs to wrap, dragging onto
+  the other row lands the tab there; releasing leaves the order as shown; a
+  plain click still switches tabs; ✕ still closes without ever starting a
+  drag; Ctrl+Tab cycles in the new order; the new order is back after a
+  restart.
 
 ### Phase Summary
-_(write when phase completes)_
+- `MoveTab` reorders `_tabs` and `TabStrip.Children` together and saves the
+  session; everything else (Ctrl+Tab, close-tab neighbour, `dump-state`,
+  session restore) reads `_tabs`, so it needed no change.
+- `AttachTabDrag`: tunnel press (activates the tab, arms the drag unless the
+  press was on ✕), `handledEventsToo` move/release (the name button captures
+  and handles), 6 px threshold, hit-test against the other items' `Bounds` so
+  rows work, neighbour-midpoint rule for the slide feel, `PointerCaptureLost`
+  ends the drag too.
+- Debug `move-tab <from> <to>`; the rest of the state was already exposed.
+- Bug found in the user's manual check, fixed: the drag ended after one slot.
+  `RemoveAt`+`Insert` on the strip detached the item, and a detach releases
+  the pointer capture the drag rides on (`PointerCaptureLost` → end-drag).
+  `TabStrip.Children.Move` moves the child in place — no detach, capture
+  lives, the tab drags any distance. `move-tab` could never see this: the bug
+  lived between two pointer events.
+- Polish from the user's manual check (two rounds): the name button's own
+  hover/pressed rectangle — smaller than the tab — read as a text box, on
+  hover and, held by the capture, through a whole drag. Hover feedback moved
+  to the tab itself (`Border.TabItem:pointerover:not(.TabItemActive):not(.TabItemDragging)`
+  tint); the name button never paints hover/pressed backgrounds; the ✕ keeps
+  its own highlight as an aim target.
+- Not scriptable, left to the user: the drag itself (threshold, live shuffle,
+  cross-row drop, ✕ never dragging).
 
 ## Phase 4: Release v1.3.0
 Status: Not started

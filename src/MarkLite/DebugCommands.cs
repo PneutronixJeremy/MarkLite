@@ -87,6 +87,27 @@ public partial class MainWindow
                 return $"active '{_tabs[index].DisplayName}'";
             }
 
+            case "move-tab":
+            {
+                /*  The drag's outcome without the drag: "move-tab <from> <to>"
+                    runs the same MoveTab a pointer crossing a neighbour does. */
+                var parts = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length != 2)
+                {
+                    return "usage: move-tab <from> <to>";
+                }
+                var from = (int)ParseDouble(parts[0]);
+                var to = (int)ParseDouble(parts[1]);
+                if (from < 0 || from >= _tabs.Count || to < 0 || to >= _tabs.Count)
+                {
+                    return $"ignored ({_tabs.Count} tabs)";
+                }
+                var moving = _tabs[from];
+                return MoveTab(moving, to)
+                    ? $"moved '{moving.DisplayName}' {from} -> {to}"
+                    : "unchanged";
+            }
+
             case "close-tab":
             {
                 if (_activeTab is null)

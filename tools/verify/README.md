@@ -24,7 +24,10 @@ Ground rules:
   report where a character or a link is drawn, in screen pixels. Nothing outside
   the process can work that out — where a character lands is the outcome of
   wrapping, theme metrics and the panel's layout — so a check that guesses
-  pixels is usually testing the margin.
+  pixels is usually testing the margin. The same line divides two newer
+  features: the sidebar splitter drag and the tab drag-to-reorder are verified
+  by hand, while `toc-width` and `move-tab` run the code each drag ends in, so
+  the scripts cover everything after the pointer.
 - Every script exits non-zero when an assertion fails and prints `PASS`/`FAIL`
   lines; `run-all.ps1` tabulates the exit codes.
 
@@ -56,6 +59,15 @@ Ground rules:
   leaving a tab drops its rendered tree, that five round-trips through a
   document holding a Mermaid diagram raise nothing, and that closing every tab
   returns to the welcome page. Prints the slowest switch render time.
+- **`test-tab-order.ps1 [-Exe path] [-Files a.md,b.md,c.md]`** — tab
+  reordering, through `move-tab <from> <to>` (what a drag ends in). Opens three
+  documents and asserts that moving the active tab to the front keeps it active
+  with its content (`chars`) travelling with its name; that a move to the same
+  slot answers `unchanged` and an out-of-range index `ignored` with the order
+  intact; that a reorder is saved to the session (`session saved: 3 tabs,
+  active <n>`) and a `-KeepSession` relaunch brings the tabs back in the NEW
+  order with the same tab active; and that `close-tab` picks its neighbour by
+  the new order. The pointer drag itself is verified by hand.
 - **`test-html-comments.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** —
   View > Show HTML comments. Uses find-in-document as the probe (it searches
   rendered text, so a findable string is on screen): comments findable with the

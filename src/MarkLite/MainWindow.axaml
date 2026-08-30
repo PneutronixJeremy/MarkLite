@@ -40,13 +40,39 @@
             <Setter Property="Foreground" Value="{DynamicResource MdAccent}" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
+        <!--  The bottom border is always there (transparent) so the accent
+              a dragged tab shows does not change the item's height and make
+              the row jitter under the pointer.  -->
         <Style Selector="Border.TabItem">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="CornerRadius" Value="4,4,0,0" />
             <Setter Property="Padding" Value="8,3,2,3" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
         </Style>
         <Style Selector="Border.TabItemActive">
             <Setter Property="Background" Value="{DynamicResource MdInlineCodeBackground}" />
+        </Style>
+        <Style Selector="Border.TabItemDragging">
+            <Setter Property="Background" Value="{DynamicResource MdInlineCodeBackground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MdAccent}" />
+        </Style>
+        <!--  Hover feedback belongs to the TAB, not to the name button inside
+              it: a rectangle behind just the name reads as a text box (and a
+              drag holds the button pressed, painting it for the whole drag).
+              The whole item tints on hover; the name button itself never
+              paints hover/pressed backgrounds; ✕ keeps its own highlight as an
+              aim target.  -->
+        <Style Selector="Border.TabItem:pointerover:not(.TabItemActive):not(.TabItemDragging)">
+            <Setter Property="Background" Value="{DynamicResource MdTableRowAltBackground}" />
+        </Style>
+        <Style Selector="Border.TabItem Button.TabName:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource MdBodyForeground}" />
+        </Style>
+        <Style Selector="Border.TabItem Button.TabName:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource MdBodyForeground}" />
         </Style>
         <Style Selector="Border.TabItem Button">
             <Setter Property="Background" Value="Transparent" />
@@ -62,7 +88,7 @@
         <Style Selector="Border.TabItemStale Button.TabName">
             <Setter Property="Foreground" Value="{DynamicResource MdStaleBannerForeground}" />
         </Style>
-        <Style Selector="Border.TabItem Button:pointerover /template/ ContentPresenter">
+        <Style Selector="Border.TabItem Button.TabClose:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource MdTableRowAltBackground}" />
             <Setter Property="Foreground" Value="{DynamicResource MdBodyForeground}" />
         </Style>

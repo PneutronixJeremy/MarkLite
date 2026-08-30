@@ -341,7 +341,7 @@ the events anyway.
   cross-row drop, ✕ never dragging).
 
 ## Phase 4: Release v1.3.0
-Status: In progress
+Status: Complete (hand-off: the user runs `build/release.ps1`)
 
 - [x] README: Features bullets — `View > Wide scroll bars` (on by default) as
   one new bullet beside the other View toggles; the "Contents sidebar" and
@@ -351,34 +351,81 @@ Status: In progress
   fixed this cycle, so no `## Fixed` section (v1.2.0's layout otherwise).
 - [x] `<Version>1.3.0</Version>` in `src/MarkLite/MarkLite.csproj`.
 - [x] `tools/scrub-check.ps1` exit 0.
-- [ ] **Commit and the user pushes BEFORE packing** (`docs/RELEASING.md`; the exe
+- [x] **Commit and the user pushes BEFORE packing** (`docs/RELEASING.md`; the exe
   records HEAD as its source revision — v1.1.0 got this wrong). The agent never
-  pushes, tags or uploads.
-- [ ] `build/pack.ps1` with the 1.2.0 files present in `releases/` so a delta is
+  pushes, tags or uploads. Done: commit `0ad0671` pushed, `origin/main` ==
+  `HEAD` confirmed before packing.
+- [x] `build/pack.ps1` with the 1.2.0 files present in `releases/` so a delta is
   produced; confirm Setup.exe, full and delta nupkg, portable zip and
   `RELEASES`; delta < 40 % of full. Never repack after the checks below.
-- [ ] Portable zip smoke run: `run-all.ps1 -Exe <unzipped>/current/MarkLite.exe`
+  Done: all five artifacts present, `RELEASES` lists 1.3.0, delta 7.39 MB =
+  30.5 % of the 24.27 MB full; packed exe `ProductVersion`
+  `1.3.0+0ad0671…` matches the pushed commit. (Portable zip unpacks with
+  `MarkLite.exe` at the zip root, not under `current/` — the plan's path was
+  wrong, harmless.)
+- [x] Portable zip smoke run: `run-all.ps1 -Exe <unzipped>/MarkLite.exe`
   → all PASS.
 - [ ] Hand-off: the user runs `build/release.ps1`.
 
 ### Verification Plan
 - `pack.ps1` exit 0; `releases/` holds the 1.3.0 full and delta nupkg,
   `MarkLite-win-Setup.exe`, the portable zip and `RELEASES`; delta < 40 % of
-  full.
+  full. **Result: exit 0; all present, delta 7.39 MB = 30.5 % of full.**
 - `run-all.ps1` against the packed portable exe → all PASS (now 12 scripts:
   the nine existing plus `test-scrollbars`, `test-toc-width`,
-  `test-tab-order`).
+  `test-tab-order`). **Result: ALL PASS (12 scripts).**
 - The packed exe's `ProductVersion` git hash matches the commit the `v1.3.0`
-  tag will point at.
-- `tools/scrub-check.ps1` exit 0 on the final tree.
+  tag will point at. **Result: `1.3.0+0ad0671…` = the pushed `0ad0671`.**
+- `tools/scrub-check.ps1` exit 0 on the final tree. **Result: clean.**
 - Post-release (user-run): an installed 1.2.0 copy takes the delta and comes
   back with wide scroll bars on, its tabs restored, sidebar at 250.
 
 ### Phase Summary
-_(write when phase completes)_
+- README (three feature clauses/bullets), `docs/release-notes/v1.3.0.md`
+  (`## Added` only), `<Version>1.3.0</Version>` — committed as `0ad0671` and
+  pushed by the user **before** packing; `origin/main == HEAD` verified.
+- `pack.ps1` produced Setup.exe, 1.3.0 full (24.27 MB) + delta (7.39 MB,
+  30.5 %), portable zip, updated `RELEASES`. Not repacked after verification.
+- Portable exe smoke: `run-all.ps1` ALL PASS (12 scripts); provenance hash in
+  `ProductVersion` matches the release commit.
+- Remaining, user-run: `build/release.ps1` (upload + tag), then the
+  post-release update check from an installed 1.2.0.
 
 ## Final Recap
-_(write when all phases complete: summary of the entire piece of work)_
+
+Three View/UI features and the v1.3.0 release, four commits:
+
+1. **Wide scroll bars** (`View > Wide scroll bars`, on by default; setting
+   `WideScrollBars`). One window class + one `ScrollViewer` style turns Fluent
+   auto-hide off everywhere. Reality correction en route: Fluent overlays an
+   auto-hiding bar but gives a permanent one its own 16 px column, so the
+   toggle is a 16 px re-wrap (anchor holds), not layout-free as drafted. The
+   same commit replaced the tab strip's `ScrollViewer` with a `WrapPanel`
+   (user decision at acceptance: rows, never a scroll bar under the tabs).
+2. **Resizable contents sidebar** (`GridSplitter`, 140–600 px, double-click
+   resets 250, `TocWidth` persisted; `toc-width`/`toc-toggle` debug verbs).
+3. **Tab drag reorder** (`MoveTab` + per-item drag plumbing; order saved with
+   the session; `move-tab` debug verb). Two manual-check fixes: strip children
+   move in place (`Children.Move`) because a remove/insert dropped the pointer
+   capture after one slot; hover feedback moved from the name button to the
+   whole tab.
+4. **v1.3.0 released** (`0ad0671`): README, release notes, version bump,
+   packed and verified as recorded in Phase 4.
+
+Verification grew three scripts (`test-scrollbars`, `test-toc-width`,
+`test-tab-order`); `run-all` is 12 scripts, ALL PASS against the packed
+portable exe. What no script covers — the two pointer drags — was accepted by
+the user by hand.
 
 ## Deployment Plan
-_(write when all phases complete: step-by-step deployment instructions)_
+
+1. ~~Bump `<Version>`, commit, push~~ — done (`0ad0671`, pushed).
+2. ~~`build/pack.ps1`~~ — done; artifacts verified in `releases/`. **Do not
+   repack**: the verified hashes are the release.
+3. **User: run `build/release.ps1`** — uploads `releases/` to GitHub Releases
+   and tags `v1.3.0` at `0ad0671`.
+4. Post-release check (user): an installed 1.2.0 updates via the 7.39 MB
+   delta; after its restart it shows v1.3.0 in Help, wide scroll bars on,
+   tabs restored in order, sidebar at 250 and draggable.
+5. Delete this plan file in the next housekeeping commit once 1.–4. are
+   confirmed (repo convention: the plan goes when the work lands).

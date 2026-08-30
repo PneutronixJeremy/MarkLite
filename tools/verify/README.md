@@ -106,6 +106,17 @@ Ground rules:
   demands of a window drag; and that the setting survives a restart. The
   setting lives in the shared MarkLite key, so the script clears it for the
   fresh-install check and leaves it on (the default) when done.
+- **`test-toc-width.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** — the
+  resizable contents sidebar. On a document with headings: a fresh install
+  shows the sidebar at 250; `toc-width 400` (the same code path a splitter
+  release takes) makes `tocWidth` 400 and the active tab's `viewportWidth` 150
+  narrower with the reader still on the same block; `toc-width 50` and `900`
+  clamp to 140 and 600; the width survives a restart; `toc-toggle` off collapses
+  `tocWidth` to 0 and hands the document the sidebar's width plus the 5 px
+  splitter, and on brings the remembered width back. The pointer drag itself
+  is not scriptable (see the ground rules) — `toc-width` stands in for the
+  release. Captures at 400 and 250 go to `-CaptureDir`. Leaves the width at
+  250, the default.
 - **`test-session.ps1 [-Exe path]`** — Options > Reopen last session. Records a
   session (three temp copies of fixtures, the active one parked mid-document),
   closes the window with `WM_CLOSE`, and relaunches four times over: plain (same

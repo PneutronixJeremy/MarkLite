@@ -185,23 +185,39 @@
                         Click="OnNoticeDismissClicked" />
             </StackPanel>
         </Border>
-        <Grid ColumnDefinitions="Auto,*">
+        <!--  Sidebar | splitter | document. The sidebar's width lives on its
+              column (a GridSplitter drives column definitions, not children);
+              the code-behind sets it from the remembered width when the panel
+              shows and collapses it to zero when the panel hides.  -->
+        <Grid Name="ContentGrid">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250" MinWidth="140" MaxWidth="600" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <Border Name="TocPanel"
                     Grid.Column="0"
-                    Width="250"
                     IsVisible="False"
-                    Background="{DynamicResource MdTableHeaderBackground}"
-                    BorderBrush="{DynamicResource MdTableBorder}"
-                    BorderThickness="0,0,1,0">
+                    Background="{DynamicResource MdTableHeaderBackground}">
                 <ScrollViewer Name="TocScroll" VerticalScrollBarVisibility="Auto">
                     <StackPanel Name="TocList" Margin="6,8" Spacing="1" />
                 </ScrollViewer>
             </Border>
+            <!--  The grab strip doubles as the rule between sidebar and
+                  document: 5 px to catch the pointer, painted in the 1 px rule's
+                  colour. Double-click puts the width back to the default.  -->
+            <GridSplitter Name="TocSplitter"
+                          Grid.Column="1"
+                          Width="5"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          Background="{DynamicResource MdTableBorder}"
+                          IsVisible="False" />
             <!--  Every tab's viewer lives here permanently; only the active one is
                   visible, and only the active one holds a rendered document (see
                   ActivateTab). Viewers stay attached so their template — and the
                   ScrollViewer the scroll hook rides on — is built only once.  -->
-            <Panel Name="ViewerHost" Grid.Column="1" />
+            <Panel Name="ViewerHost" Grid.Column="2" />
         </Grid>
     </DockPanel>
 </Window>

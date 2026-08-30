@@ -59,6 +59,18 @@ public partial class MainWindow : Window
     private bool _tocVisible = true;
     private int _currentTocIndex = -1;
 
+    /*  Sidebar width. The column is what the GridSplitter drags and what the
+        layout reads; _tocWidth is the remembered value, kept apart so hiding
+        the panel (column to zero) and showing it again round-trips the
+        reader's width. Clamped so a stray registry value cannot produce a
+        sidebar that is invisible or swallows the document. */
+    private const double TocDefaultWidth = 250;
+    private const double TocMinWidth = 140;
+    private const double TocMaxWidth = 600;
+    private readonly ColumnDefinition _tocColumn;
+    private readonly GridSplitter _tocSplitter;
+    private double _tocWidth = TocDefaultWidth;
+
     /*  In-document search. The debounce timer batches keystrokes in the find
         box (a full re-highlight per keypress is wasteful on big documents);
         _findVisible mirrors the find bar and gates F3/Esc handling;
@@ -91,6 +103,40 @@ public partial class MainWindow : Window
 
         _viewerHost = this.FindControl<Panel>("ViewerHost")!;
         _findBox = this.FindControl<TextBox>("FindBox")!;
+
+        /*  Sidebar width: the stored value is applied when the panel first
+            shows (UpdateTocPanelVisibility), so it is only remembered here. A
+            drag persists on release, not per pixel; a double-click on the
+            strip is the way back to the default. */
+        _tocColumn = this.FindControl<Grid>("ContentGrid")!.ColumnDefinitions[0];
+        _tocSplitter = this.FindControl<GridSplitter>("TocSplitter")!;
+        if (UserSettings.TocWidth is { } storedTocWidth)
+        {
+            _tocWidth = ClampTocWidth(storedTocWidth);
+            DebugLog.Write($"toc width restored: {_tocWidth:F0}");
+        }
+        /*  DoubleTapped fires on the second press; that press's release still
+            raises DragCompleted, and if no layout pass ran in between the
+            column's ActualWidth is the OLD width — reading it would undo the
+            reset. The flag makes that release re-apply the default instead. */
+        var tocResetPending = false;
+        _tocSplitter.DoubleTapped += (_, _) =>
+        {
+            tocResetPending = true;
+            SetTocWidth(TocDefaultWidth, persist: true);
+        };
+        _tocSplitter.DragCompleted += (_, _) =>
+        {
+            if (tocResetPending)
+            {
+                tocResetPending = false;
+                SetTocWidth(TocDefaultWidth, persist: true);
+            }
+            else
+            {
+                SetTocWidth(_tocColumn.ActualWidth, persist: true);
+            }
+        };
 
         _hyperlinkCommand = new MarkLiteHyperlinkCommand(
             currentDocumentDirectory: () => _activeTab?.FilePath is { } file ? Path.GetDirectoryName(file) : null,
@@ -1375,8 +1421,44 @@ public partial class MainWindow : Window
 
     private void UpdateTocPanelVisibility()
     {
-        this.FindControl<Border>("TocPanel")!.IsVisible =
-            _tocVisible && (_activeTab?.TocEntries.Count ?? 0) > 0;
+        var visible = _tocVisible && (_activeTab?.TocEntries.Count ?? 0) > 0;
+        this.FindControl<Border>("TocPanel")!.IsVisible = visible;
+
+        /*  A hidden Border still leaves its fixed-width column standing, so
+            the column itself is collapsed — MinWidth first, or the zero width
+            would be clamped back up. Showing restores the remembered width. */
+        if (visible)
+        {
+            _tocColumn.MinWidth = TocMinWidth;
+            _tocColumn.Width = new GridLength(_tocWidth);
+        }
+        else
+        {
+            _tocColumn.MinWidth = 0;
+            _tocColumn.Width = new GridLength(0);
+        }
+        _tocSplitter.IsVisible = visible;
+    }
+
+    private static double ClampTocWidth(double width)
+    {
+        return Math.Clamp(width, TocMinWidth, TocMaxWidth);
+    }
+
+    /// <summary>Sets the sidebar width — a splitter release, a double-click reset or the
+    /// debug command all land here. Clamped; the column follows only while the panel shows.</summary>
+    private void SetTocWidth(double width, bool persist)
+    {
+        _tocWidth = ClampTocWidth(width);
+        if (this.FindControl<Border>("TocPanel")!.IsVisible)
+        {
+            _tocColumn.Width = new GridLength(_tocWidth);
+        }
+        if (persist)
+        {
+            UserSettings.TocWidth = (int)Math.Round(_tocWidth);
+        }
+        DebugLog.Write($"toc width: {_tocWidth:F0}");
     }
 
     /// <summary>Refills one tab's sidebar heading list from its parsed model.</summary>

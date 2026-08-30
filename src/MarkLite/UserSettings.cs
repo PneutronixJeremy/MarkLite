@@ -109,6 +109,30 @@ internal static class UserSettings
         }
     }
 
+    /*  Width of the contents sidebar, in DIPs, as the reader last dragged it.
+        Null means never dragged; the caller clamps whatever is stored, since
+        the limits are the window's business, not the registry's. */
+    internal static int? TocWidth
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(KeyPath);
+            return key?.GetValue("TocWidth") as int?;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(KeyPath);
+            if (value is null)
+            {
+                key.DeleteValue("TocWidth", throwOnMissingValue: false);
+            }
+            else
+            {
+                key.SetValue("TocWidth", value.Value, RegistryValueKind.DWord);
+            }
+        }
+    }
+
     /*  Options > Reopen last session. Default ON, Notepad's behaviour: the
         documents that were open come back, which matters most across an update
         restart nobody asked for. Null means never set. */

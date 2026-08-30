@@ -155,69 +155,87 @@ code block's horizontal bar likewise takes a 16 px row below the code.
   taller (horizontal bar row). Not a bug; Fluent's permanent-bar layout.
 
 ## Phase 2: Resizable contents sidebar
-Status: Not started
+Status: Complete
 
 Today `TocPanel` is a `Border` with a hard `Width="250"` in
 `Grid ColumnDefinitions="Auto,*"`. A `GridSplitter` needs a sized column to
 drive, so the width moves from the Border to a named `ColumnDefinition`.
 
-- [ ] `MainWindow.axaml`: columns become
-  `TocColumn` (`Width="250" MinWidth="140" MaxWidth="600"`), a splitter column
-  (`Auto`) and `*` for `ViewerHost` (now `Grid.Column="2"`). `TocPanel` loses
-  `Width` and its right `BorderThickness` (the splitter draws the rule).
+- [x] `MainWindow.axaml`: grid is now `ContentGrid` with explicit
+  `ColumnDefinitions` — `Width="250" MinWidth="140" MaxWidth="600"`, a splitter
+  column (`Auto`) and `*` for `ViewerHost` (now `Grid.Column="2"`). `TocPanel`
+  lost `Width` and its right `BorderThickness` (the splitter draws the rule).
   `<GridSplitter Name="TocSplitter" Grid.Column="1" Width="5" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" Background="{DynamicResource MdTableBorder}" IsVisible="False" />`
-  — a 5 px grab strip painted as the existing 1 px rule colour.
-- [ ] `UserSettings.TocWidth` (`int?`, DWord `TocWidth`). Read in the
-  constructor, clamped to 140–600, applied to `TocColumn.Width`; log
-  `toc width restored: <n>` when a stored value exists.
-- [ ] `MainWindow.axaml.cs`:
-  - `SetTocWidth(double width, bool persist)`: clamps, sets
-    `TocColumn.Width = new GridLength(width)`, writes `UserSettings.TocWidth`
+  — a 5 px grab strip painted as the existing 1 px rule colour. The column is
+  not named: `ColumnDefinition` is not a control, so the code-behind takes
+  `ContentGrid.ColumnDefinitions[0]`.
+- [x] `UserSettings.TocWidth` (`int?`, DWord `TocWidth`). Read in the
+  constructor into `_tocWidth`, clamped to 140–600; log
+  `toc width restored: <n>` when a stored value exists. Applied to the column
+  by `UpdateTocPanelVisibility()` when the panel first shows.
+- [x] `MainWindow.axaml.cs`:
+  - `SetTocWidth(double width, bool persist)`: clamps into `_tocWidth`, sets
+    the column while the panel is visible, writes `UserSettings.TocWidth`
     when `persist`, logs `toc width: <n>`.
-  - `TocSplitter.DragCompleted` → `SetTocWidth(TocColumn.ActualWidth, persist: true)`
-    (`GridSplitter` derives from `Thumb`, so the event exists).
-  - `TocSplitter.DoubleTapped` → `SetTocWidth(250, persist: true)`.
+  - `TocSplitter.DragCompleted` → `SetTocWidth(column.ActualWidth, persist: true)`.
+  - `TocSplitter.DoubleTapped` → `SetTocWidth(250, persist: true)`. Guarded by
+    a `tocResetPending` flag: `DoubleTapped` fires on the second *press*, and
+    that press's release still raises `DragCompleted`, which would read the
+    old `ActualWidth` if no layout pass ran in between — the flag makes that
+    release re-apply the default instead.
   - `UpdateTocPanelVisibility()` also drives the column: hidden ⇒
-    `TocColumn.MinWidth = 0`, `TocColumn.Width = new GridLength(0)`, splitter
-    hidden; shown ⇒ `MinWidth = 140`, `Width` back to the remembered value,
-    splitter visible. Keep the remembered width in a field (`_tocWidth`) so
-    hide/show round-trips do not lose it.
-- [ ] `DebugCommands.cs`: `toc-width <px>` → `SetTocWidth(px, persist: true)`,
-  the same path a splitter release takes. `dump-state` gains
-  `"tocVisible":true|false` (the Border's `IsVisible`), `"tocWidth":<n>`
-  (`TocPanel.Bounds.Width`, 0 when hidden) and `"viewportWidth":<n>` on each
-  tab (`Scroller.Viewport.Width`), so a check can see the document give the
-  pixels up.
-- [ ] `tools/verify/test-toc-width.ps1` on `testdata/sample-plan.md` (has
-  headings, so the sidebar shows):
-  1. fresh launch: `tocVisible` true, `tocWidth` 250 ±1;
-  2. `toc-width 400` → `tocWidth` 400 ±1 and the active tab's `viewportWidth`
-     shrank by 150 ±2; `firstVisibleBlock` unchanged (the resize re-wraps, the
-     anchor holds — same guarantee `test-resize.ps1` asserts);
-  3. clamps: `toc-width 50` → 140; `toc-width 900` → 600;
-  4. `toc-width 400`, restart with the settings kept → 400 (persisted);
-  5. `toc` toggle off (existing `toc` command with no argument, or add
-     `toc-toggle` if the parser needs it) → `tocVisible` false, `tocWidth` 0,
-     `viewportWidth` grew by 400 + splitter; toggle on → 400 again;
-  6. `toc-width 250` to leave the machine as found; capture at 400 and at 250
-     saved to `-CaptureDir` for the eye.
-- [ ] `tools/verify/README.md` entry. `test-toc-search.ps1` and
-  `test-virtual.ps1` re-run — the sidebar's contents and the `toc <n>` landing
-  (8 px below the viewport top) must not care which column holds it.
-- [ ] `tools/scrub-check.ps1` exit 0.
+    `MinWidth = 0`, `Width = 0`, splitter hidden; shown ⇒ `MinWidth = 140`,
+    `Width` back to `_tocWidth`, splitter visible.
+- [x] `DebugCommands.cs`: `toc-width <px>` → `SetTocWidth(px, persist: true)`,
+  answers with the clamped width; `toc-toggle` → `ToggleToc()` (`toc` with no
+  argument parses as heading 0, so the toggle needed its own verb).
+  `dump-state` gains `"tocVisible"` and `"tocWidth"` (`TocPanel.Bounds.Width`,
+  0 when hidden); `"viewportWidth"` arrived in Phase 1.
+- [x] `tools/verify/test-toc-width.ps1` on `testdata/sample-plan.md`, as
+  specified (fresh 250 with no `restored` log line; 400 → viewport −150 and the
+  reader, parked two pages down, on the same block; clamps 50→140, 900→600;
+  `toc-toggle` off → 0 and viewport +405, on → 400 remembered; restart → 400
+  with `toc width restored: 400` logged; `toc-width 250` to finish; captures
+  at 400 and 250). Clears the shared-key `TocWidth` value before the first
+  launch, as `test-scrollbars` does for its setting.
+- [x] `tools/verify/README.md` entry; `run-all.ps1` list entry after
+  `test-scrollbars.ps1`. `test-toc-search.ps1` and `test-virtual.ps1` re-run
+  in `run-all`.
+- [x] `tools/scrub-check.ps1` exit 0.
 
 ### Verification Plan
 - `build/publish.ps1` exit 0; `tools/verify/test-toc-width.ps1` → all PASS.
-- `tools/verify/run-all.ps1` → every row PASS.
+  **Result: exit 0; ALL PASS (21 checks).**
+- `tools/verify/run-all.ps1` → every row PASS. **Result: ALL PASS (11
+  scripts) on the second run.** The first run had `test-selection.ps1` fail 2
+  of 25 checks; the tail-only capture lost which two, the script passed 25/25
+  when re-run alone and again inside the full second run. Not reproduced;
+  `test-selection` reads nothing Phase 2 touched (its inputs are the clipboard
+  round-trip and a highlight pixel count). Noted so a recurrence is recognised
+  as a pre-existing flake rather than a Phase 2 regression.
 - Docs screenshots unaffected: default width is still 250, so
-  `docs/screenshot-*.png` need no recapture.
+  `docs/screenshot-*.png` need no recapture. (The rule between sidebar and
+  document is now the 5 px splitter rather than a 1 px border — a visible but
+  small difference from the existing screenshots; recapture only if the user
+  wants them exact.)
 - User acceptance (manual): dragging the strip between sidebar and document
   resizes live and stops at 140 / 600; the width is back after closing and
   reopening MarkLite; double-click on the strip returns to 250; Ctrl+T twice
   brings the same width back; the cursor changes over the strip.
 
 ### Phase Summary
-_(write when phase completes)_
+- Sidebar width lives on `ContentGrid`'s first column; `_tocWidth` remembers
+  it across hide/show; `UserSettings.TocWidth` persists it (shared key).
+- `GridSplitter` (5 px, rule colour) between sidebar and document; release
+  persists, double-click resets to 250 (with the press/release ordering guard
+  described above).
+- Debug: `toc-width <px>`, `toc-toggle`; `dump-state` → `tocVisible`,
+  `tocWidth`.
+- Observation from the run: `viewportWidth` is in DIPs, so on the 1400 px-wide
+  verification window at a scaled display the document reports ~480 DIP with a
+  400 sidebar. Deltas are what the checks assert, so scaling does not matter.
+- The 5 px splitter is the one visible change at default width; the user
+  should eye it (screenshot `toc-width-400.png` / `-250.png` in the captures).
 
 ## Phase 3: Drag tabs to reorder
 Status: Not started

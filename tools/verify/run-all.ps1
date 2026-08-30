@@ -59,6 +59,7 @@ $scripts = @(
     'test-toc-search.ps1'
     'test-gutter.ps1'
     'test-scrollbars.ps1'
+    'test-toc-width.ps1'
     'test-reload.ps1'
     'test-session.ps1'
     'test-resize.ps1'

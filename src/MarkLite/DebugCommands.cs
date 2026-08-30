@@ -136,6 +136,22 @@ public partial class MainWindow
                 return $"'{_activeTab!.TocEntries[index].Text}' offset {DebugScrollY():F1}";
             }
 
+            case "toc-toggle":
+            {
+                /*  Ctrl+T without a keyboard. "toc" with no argument jumps to
+                    heading 0, so the toggle needs its own verb. */
+                ToggleToc();
+                return _tocVisible ? "shown" : "hidden";
+            }
+
+            case "toc-width":
+            {
+                /*  The same path a splitter release takes: clamp, apply,
+                    persist. Answers with the width actually applied. */
+                SetTocWidth(ParseDouble(argument), persist: true);
+                return $"{_tocWidth:F0}";
+            }
+
             case "anchor":
                 ScrollToAnchor(argument);
                 return $"offset {DebugScrollY():F1}";
@@ -456,6 +472,11 @@ public partial class MainWindow
             .Append(",\"activeTab\":").Append(_activeTab is null ? -1 : _tabs.IndexOf(_activeTab))
             .Append(",\"tocCount\":").Append(_activeTab?.TocEntries.Count ?? 0)
             .Append(",\"tocIndex\":").Append(_currentTocIndex)
+            /*  The sidebar as laid out, not as configured: Bounds.Width is
+                what the reader sees (0 while hidden), so a check can watch the
+                document take the pixels the sidebar gives up. */
+            .Append(",\"tocVisible\":").Append(TocPanelVisible ? "true" : "false")
+            .Append(",\"tocWidth\":").Append(Number(TocPanelVisible ? TocPanelBorder.Bounds.Width : 0))
             .Append(",\"gutterVisible\":").Append(Rendering.Virtual.GutterPanel.Enabled ? "true" : "false")
             .Append(",\"wideScrollBars\":").Append(WideScrollBarsOn ? "true" : "false")
             /*  The document bar's own state, not the setting: with auto-hide
@@ -482,6 +503,10 @@ public partial class MainWindow
             .Append('}');
         return builder.ToString();
     }
+
+    private Border TocPanelBorder => this.FindControl<Border>("TocPanel")!;
+
+    private bool TocPanelVisible => TocPanelBorder.IsVisible;
 
     private ScrollBar? ActiveVerticalScrollBar =>
         _activeTab?.Scroller?.GetVisualDescendants().OfType<ScrollBar>()

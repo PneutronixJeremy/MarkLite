@@ -19,8 +19,8 @@ internal sealed record HighlightPiece(Run Run, bool HadForeground, IBrush? BaseF
     document — no overlay geometry and no scroll synchronization.
 
     Every renderable piece of text is a TextBlock (prose blocks are
-    MarkdownSelectableTextBlock, code blocks the SelectableTextBlock inside
-    MarkLite's code panel) carrying standard Avalonia Inlines, so prose and code
+    MarkdownSelectableTextBlock, code blocks the TextBlock inside MarkLite's
+    code panel) carrying standard Avalonia Inlines, so prose and code
     share one code path. Spans — including MarkdownHyperlink — are recursed into
     and KEPT: only their children are replaced, which leaves link hit-testing
     (index-based over the inline collection) intact.

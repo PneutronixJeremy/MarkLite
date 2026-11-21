@@ -1295,10 +1295,7 @@ public partial class MainWindow : Window
         }
         /*  Ctrl+A and Ctrl+C reach the document only when the focus is not in a
             text box: in the find box they mean "select what I typed" and "copy
-            what I typed", which is what the box itself does with them. Same
-            reason the code panel's own SelectableTextBlock keeps its copy — a
-            reader who selected code inside one block expects Ctrl+C to give them
-            that, not the document selection. */
+            what I typed", which is what the box itself does with them. */
         if (e.KeyModifiers == KeyModifiers.Control && !IsTextInputFocused())
         {
             if (e.Key == Key.A)
@@ -1307,7 +1304,7 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             }
-            if (e.Key == Key.C && !IsSelectableTextFocused())
+            if (e.Key == Key.C)
             {
                 CopyDocumentSelection();
                 e.Handled = true;
@@ -1339,9 +1336,6 @@ public partial class MainWindow : Window
     private DocumentSelection? ActiveSelection => (_activeTab?.Viewer ?? _welcomeViewer)?.Selection;
 
     private bool IsTextInputFocused() => FocusManager?.GetFocusedElement() is TextBox;
-
-    private bool IsSelectableTextFocused() =>
-        FocusManager?.GetFocusedElement() is SelectableTextBlock;
 
     private void OnSelectAllClicked(object? sender, RoutedEventArgs e) => SelectAllInDocument();
 

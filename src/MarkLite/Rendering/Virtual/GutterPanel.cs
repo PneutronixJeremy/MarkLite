@@ -71,11 +71,10 @@ internal sealed class GutterPanel : Control
             var block = model.Blocks[index];
             var top = _panel.BlockOffset(index);
 
-            /*  Only code blocks are numbered line by line, and the type check
-                is the guard rather than "does it contain a SelectableTextBlock":
-                prose is selectable too, and numbering a paragraph's WRAPPED
-                rows would invent source lines that do not exist. Mermaid
-                fences are excluded — they render a diagram, not lines. */
+            /*  Only code blocks are numbered line by line: numbering a
+                paragraph's WRAPPED rows would invent source lines that do not
+                exist. Mermaid fences are excluded — they render a diagram, not
+                lines. */
             if (block.Block is CodeBlock and not (FencedCodeBlock { Info: "mermaid" })
                 && CodeLineOffsets(container) is { } code)
             {
@@ -125,8 +124,8 @@ internal sealed class GutterPanel : Control
     private (double Origin, double[] Tops)? CodeLineOffsets(BlockContainer container)
     {
         var text = container.GetVisualDescendants()
-            .OfType<SelectableTextBlock>()
-            .FirstOrDefault();
+            .OfType<TextBlock>()
+            .FirstOrDefault(static block => block.Classes.Contains(MarkLiteCodeBlockRenderer.CodeTextClass));
         if (text is null || text.TextLayout is not { } layout || layout.TextLines.Count <= 1)
         {
             return null;

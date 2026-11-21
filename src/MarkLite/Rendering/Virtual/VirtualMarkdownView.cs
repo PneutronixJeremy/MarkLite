@@ -335,18 +335,6 @@ internal sealed class VirtualMarkdownView : MarkdownViewer
             return;
         }
 
-        /*  A code block keeps its own selection: the renderer puts a
-            SelectableTextBlock inside it, which handles dragging, Ctrl+C and the
-            context menu for its own text. Starting a document drag there would
-            take that away — so the event is left alone, and the document
-            selection only ever treats a code block as something a range passes
-            THROUGH. */
-        if (e.Source is Visual source && source.FindAncestorOfType<SelectableTextBlock>() is not null)
-        {
-            _selection.Clear();
-            return;
-        }
-
         if (FindLink(e.GetPosition(this)) is not null)
         {
             //  Left for the release: a press on a link must not clear a selection

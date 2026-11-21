@@ -92,8 +92,8 @@
         <Setter Property="Padding" Value="14,8,14,10" />
         <Setter Property="Margin" Value="0,8,0,0" />
     </Style>
-    <!--  :is(TextBlock): the code text lives in a SelectableTextBlock, which a
-          bare TextBlock selector does not match (same trap as the body style). -->
+    <!--  :is(TextBlock) rather than TextBlock, kept for the same trap as the
+          body style: a TextBlock subclass would not match the bare selector. -->
     <Style Selector=":is(mv|MarkdownViewer) Border.markdown-code-block :is(TextBlock)">
         <Setter Property="FontFamily" Value="{DynamicResource MdCodeFontFamily}" />
         <Setter Property="FontSize" Value="13" />

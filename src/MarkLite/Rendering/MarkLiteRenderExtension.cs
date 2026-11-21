@@ -23,11 +23,9 @@ namespace MarkLite.Rendering;
       replacement cannot reach. Our list renderer always draws the box itself,
       and GFM only allows task markers at list-item starts, so nothing is lost;
     - CodeBlockRenderer → panel with fence-language label, horizontal scroll
-      for long lines, ColorCode syntax highlighting, and per-block selection.
-      Known tradeoff: the viewer's cross-block selection layer only registers
-      code blocks shaped exactly Border>TextBlock, so these blocks fall out of
-      whole-document drag selection — the SelectableTextBlock inside provides
-      per-block selection and copy instead. */
+      for long lines and ColorCode syntax highlighting. The code text is a
+      plain TextBlock: the virtual view's document selection covers it like any
+      other block, so it needs no selection of its own. */
 internal sealed class MarkLiteRenderExtension : IMarkViewExtension
 {
     public void Register(AvaloniaRenderer renderer)
@@ -168,12 +166,15 @@ internal sealed class ProminentListRenderer : AvaloniaObjectRenderer<ListBlock>
     label, long lines clipped) with the MarkLite panel:
         Border.markdown-code-block > DockPanel
             [ TextBlock.CodeLangLabel (top, right-aligned)
-              ScrollViewer (horizontal) > SelectableTextBlock (colored Runs) ]
+              ScrollViewer (horizontal) > TextBlock.CodeText (colored Runs) ]
     Highlighting uses ColorCode over the whole block at render time — full
     multi-line lexing state, unlike MarkView's per-line ICodeHighlighter slot.
     Mermaid fences are handed to MermaidFenceRenderer from here. */
 internal sealed class MarkLiteCodeBlockRenderer : AvaloniaObjectRenderer<CodeBlock>
 {
+    /// <summary>Style class on the TextBlock holding a code block's text.</summary>
+    public const string CodeTextClass = "CodeText";
+
     protected override void Write(AvaloniaRenderer renderer, CodeBlock obj)
     {
         var fenced = obj as FencedCodeBlock;
@@ -198,10 +199,12 @@ internal sealed class MarkLiteCodeBlockRenderer : AvaloniaObjectRenderer<CodeBlo
         }
         var codeText = code.ToString();
 
-        var content = new SelectableTextBlock
+        var content = new TextBlock
         {
             TextWrapping = TextWrapping.NoWrap,
         };
+        //  How the gutter finds the code text to number its lines.
+        content.Classes.Add(CodeTextClass);
         var colorCodeLanguage = language.Length > 0 ? CodeHighlighter.MapLanguage(language) : null;
         if (colorCodeLanguage is null)
         {

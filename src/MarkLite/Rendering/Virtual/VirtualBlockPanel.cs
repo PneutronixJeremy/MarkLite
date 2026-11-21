@@ -63,8 +63,8 @@ internal sealed class VirtualBlockPanel : Panel
         the numbers on re-wraps nothing and invalidates no cached height. */
     private readonly GutterPanel _gutter;
 
-    /*  The selection highlight. Also a permanent child, and added BEFORE the
-        gutter and before any block so it draws underneath the glyphs. */
+    /*  The selection highlight. Also a permanent child; its ZIndex puts it over
+        every block, so opaque block backgrounds cannot hide it. */
     private SelectionAdorner? _adorner;
 
     private ScrollViewer? _scroller;
@@ -96,8 +96,7 @@ internal sealed class VirtualBlockPanel : Panel
     }
 
     /// <summary>Installs the selection highlight. Called once, by the view that owns the
-    /// selection; the adorner is inserted at the bottom of the child order so blocks draw over
-    /// it.</summary>
+    /// selection; the adorner raises its own ZIndex so it draws over the blocks.</summary>
     public void AttachSelection(DocumentSelection selection)
     {
         if (_adorner is not null)
@@ -105,7 +104,7 @@ internal sealed class VirtualBlockPanel : Panel
             return;
         }
         _adorner = new SelectionAdorner(this, selection);
-        Children.Insert(0, _adorner);
+        Children.Add(_adorner);
     }
 
     /// <summary>Raised when a block gains controls, so a search can highlight it.</summary>

@@ -143,17 +143,44 @@ public partial class MainWindow : Window
             openDocument: OpenFile,
             scrollToAnchor: ScrollToAnchor);
 
-        var idleTrimTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
-        idleTrimTimer.Tick += (_, _) =>
+        /*  Housekeeping tick: idle memory trim, plus the file-watch safety net.
+            A tick arriving far later than its interval means the machine slept
+            (or the clock jumped); file watchers are not trusted to survive that
+            and are rebuilt. Otherwise each open file gets one stat to catch a
+            change its watcher never reported. */
+        var housekeepingInterval = TimeSpan.FromSeconds(10);
+        var lastTickUtc = DateTime.UtcNow;
+        var housekeepingTimer = new DispatcherTimer { Interval = housekeepingInterval };
+        housekeepingTimer.Tick += (_, _) =>
         {
-            if (!_idleTrimDone && DateTime.UtcNow - _lastActivityUtc > TimeSpan.FromSeconds(30))
+            var now = DateTime.UtcNow;
+            var resumed = now - lastTickUtc > housekeepingInterval * 3;
+            lastTickUtc = now;
+
+            if (resumed)
+            {
+                DebugLog.Write("tick gap: assuming resume, rebuilding file watchers");
+            }
+            foreach (var tab in _tabs)
+            {
+                if (resumed)
+                {
+                    tab.Watcher.Rewatch();
+                }
+                else
+                {
+                    tab.Watcher.CheckForMissedChange();
+                }
+            }
+
+            if (!_idleTrimDone && now - _lastActivityUtc > TimeSpan.FromSeconds(30))
             {
                 _idleTrimDone = true;
                 GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
                 DebugLog.Write("idle memory trim");
             }
         };
-        idleTrimTimer.Start();
+        housekeepingTimer.Start();
 
         _findDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
         _findDebounce.Tick += (_, _) =>

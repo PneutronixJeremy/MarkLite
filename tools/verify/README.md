@@ -93,6 +93,12 @@ Ground rules:
   same paragraph each time and that only genuinely changed blocks are rebuilt
   (`reload: reused <n> of <m> containers, <a> of <b> blocks aligned`). Edits are
   file writes; the app's own watcher notices them.
+- **`test-watcher-recovery.ps1 [-Exe path]`** — live reload when the file
+  watcher has gone quiet (seen after sleep/resume). `watcher-mute` leaves the
+  active tab's watcher in place but deaf; the script then asserts a write is
+  still reloaded by the 10 s stamp check (`watcher missed change`), that the
+  rebuilt watcher reports the next write by itself, and that `rewatch` — what a
+  detected resume runs — picks up a change made while deaf straight away.
 - **`test-gutter.ps1 [-Exe path] [-File doc.md] [-CaptureDir dir]`** — the
   line-number gutter. The strip is reserved on both sides of the document whether the numbers show or not, so the toggle has to be
   free: a full-resolution capture diff between the two states must find every

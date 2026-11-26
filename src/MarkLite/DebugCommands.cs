@@ -310,6 +310,30 @@ public partial class MainWindow
                 return $"{(enabled ? "on" : "off")}, {StoredSessionCount} tabs stored";
             }
 
+            case "watcher-mute":
+            {
+                /*  Stands in for a watcher that died without an error (seen
+                    after sleep/resume): the OS watch stops delivering but the
+                    object stays, so only the periodic stamp check or a rewatch
+                    can notice the next change. */
+                if (_activeTab is null)
+                {
+                    return "no active tab";
+                }
+                _activeTab.Watcher.MuteForTest();
+                return $"muted '{_activeTab.DisplayName}'";
+            }
+
+            case "rewatch":
+            {
+                // What the housekeeping tick runs on resume from sleep.
+                foreach (var tab in _tabs)
+                {
+                    tab.Watcher.Rewatch();
+                }
+                return $"rewatched {_tabs.Count} tabs";
+            }
+
             case "gc":
             {
                 GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
